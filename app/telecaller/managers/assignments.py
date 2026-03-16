@@ -36,6 +36,7 @@ class GymInfo(BaseModel):
     approval_status: Optional[str] = None
     location: Optional[str] = None
     verified: Optional[bool] = None
+    type: Optional[str] = None
 
 class TelecallerAssignment(BaseModel):
     telecaller_id: int
@@ -449,7 +450,8 @@ async def get_unassigned_gyms(
     search: Optional[str] = None,
     city: Optional[str] = None,
     zone: Optional[str] = None,
-    approval_status: Optional[str] = None
+    approval_status: Optional[str] = None,
+    type: Optional[str] = None
 ):
     """Get gyms that are not assigned to any telecaller with pagination and filters"""
     try:
@@ -486,6 +488,9 @@ async def get_unassigned_gyms(
         if approval_status:
             query = query.filter(GymDatabase.approval_status == approval_status)
 
+        if type:
+            query = query.filter(GymDatabase.type == type)
+
         # Get total count
         total = query.count()
         #(f"Found {total} unassigned gyms for manager {manager.id}")
@@ -509,7 +514,8 @@ async def get_unassigned_gyms(
                 zone=getattr(gym, 'zone', None),
                 approval_status=getattr(gym, 'approval_status', None),
                 location=getattr(gym, 'location', None),
-                verified=getattr(gym, 'verified', None)
+                verified=getattr(gym, 'verified', None),
+                type=getattr(gym, 'type', None)
             )
             gym_list.append(gym_info)
 
@@ -539,7 +545,8 @@ async def get_all_gyms(
     limit: int = 50,  # Reduced default limit
     search: Optional[str] = None,
     city: Optional[str] = None,
-    area: Optional[str] = None
+    area: Optional[str] = None,
+    type: Optional[str] = None
 ):
     """Get all gyms from gym_database with pagination and filters"""
     try:
@@ -566,6 +573,9 @@ async def get_all_gyms(
         if area:
             query = query.filter(GymDatabase.area == area)
 
+        if type:
+            query = query.filter(GymDatabase.type == type)
+
         # Get total count
         total = query.count()
 
@@ -588,7 +598,8 @@ async def get_all_gyms(
                 "zone": getattr(gym, "zone", None),
                 "approval_status": getattr(gym, "approval_status", None),
                 "location": getattr(gym, "location", None),
-                "verified": getattr(gym, "verified", None)
+                "verified": getattr(gym, "verified", None),
+                "type": getattr(gym, "type", None)
             }
             gym_list.append(gym_info)
 
@@ -721,6 +732,36 @@ async def get_all_locations(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to fetch locations: {str(e)}"
+        )
+
+@router.get("/gym-types")
+async def get_gym_types(
+    manager: Manager = Depends(get_current_manager),
+    db: Session = Depends(get_db)
+):
+    """Get all distinct gym types from gym_database"""
+    try:
+        # Query all distinct types from gym_database
+        query = db.query(GymDatabase.type).filter(
+            GymDatabase.type.isnot(None)
+        ).distinct()
+
+        results = query.all()
+
+        # Extract types from result tuples
+        types = [result[0] for result in results if result[0]]
+
+        # Sort alphabetically
+        types.sort()
+
+        return {
+            "types": types
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch gym types: {str(e)}"
         )
 
 @router.get("/assignments/all")

@@ -59,7 +59,8 @@ async def get_all_gyms_optimized(
     limit: int = Query(50, ge=1, le=200),
     search: Optional[str] = None,
     city: Optional[str] = None,
-    area: Optional[str] = None
+    area: Optional[str] = None,
+    type: Optional[str] = None
 ):
     
     try:
@@ -86,6 +87,7 @@ async def get_all_gyms_optimized(
                 GymDatabase.location,
                 GymDatabase.verified,
                 GymDatabase.isprime,
+                GymDatabase.type,
                 # Assignment fields (will be NULL if not assigned)
                 # GymAssignment has composite PK (gym_id, telecaller_id), no separate id
                 GymAssignment.telecaller_id.label('assigned_telecaller_id'),
@@ -125,6 +127,9 @@ async def get_all_gyms_optimized(
 
         if area:
             base_query = base_query.where(GymDatabase.area == area)
+
+        if type:
+            base_query = base_query.where(GymDatabase.type == type)
 
         # Get total count BEFORE pagination
         count_query = select(func.count()).select_from(base_query.subquery())
@@ -207,7 +212,8 @@ async def get_all_gyms_optimized(
                 "approval_status": row.approval_status,
                 "location": row.location,
                 "verified": row.verified,
-                "is_prime": row.isprime == 1 if row.isprime is not None else False
+                "is_prime": row.isprime == 1 if row.isprime is not None else False,
+                "type": row.type
             }
             gyms.append(gym_data)
 

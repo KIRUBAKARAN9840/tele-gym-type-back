@@ -217,6 +217,7 @@ class GymDatabase(Base):
     address = Column(String(255))
     operating_hours = Column(JSON)
     approval_status = Column(Enum('pending', 'approved', 'rejected', name='approval_status_enum'), default='pending')
+    type = Column(String(50), default='Gym')  # Type of fitness center: Gym, Yoga, Pilates, etc.
     submitted_by_manager = Column(Integer, ForeignKey('telecaller.managers.id', ondelete='SET NULL'), nullable=True)
     submitted_by_executive = Column(Integer, nullable=True)  # No FK - executives table not in telecaller schema
     submitter_type = Column(Enum('manager', 'executive', name='submitter_type_enum'), nullable=False)
