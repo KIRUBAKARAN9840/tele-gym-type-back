@@ -220,6 +220,55 @@ async def get_users_overview(
         # Get client IDs from current page for fetching conversion details
         client_ids_on_page = [str(r.client_id) for r in results]
 
+        # Fetch last purchase dates for clients on this page
+        last_purchase_dates_map = {}
+        if client_ids_on_page:
+            # 1. Daily Pass - max(created_at)
+            try:
+                dailypass_session = get_dailypass_session()
+                dp_dates = dailypass_session.query(
+                    DailyPass.client_id,
+                    func.max(DailyPass.created_at).label('last_date')
+                ).filter(
+                    DailyPass.client_id.in_(client_ids_on_page)
+                ).group_by(DailyPass.client_id).all()
+                dailypass_session.close()
+                for client_id, last_date in dp_dates:
+                    last_purchase_dates_map.setdefault(client_id, []).append(last_date)
+            except Exception as e:
+                print(f"[OVERVIEW] Error fetching Daily Pass dates: {e}")
+
+            # 2. Session Purchase - max(created_at) where status = 'paid'
+            try:
+                sp_date_stmt = select(
+                    func.cast(SessionPurchase.client_id, String).label('client_id'),
+                    func.max(SessionPurchase.created_at).label('last_date')
+                ).where(
+                    and_(
+                        func.cast(SessionPurchase.client_id, String).in_(client_ids_on_page),
+                        SessionPurchase.status == "paid"
+                    )
+                ).group_by(func.cast(SessionPurchase.client_id, String))
+                sp_date_result = await db.execute(sp_date_stmt)
+                for client_id, last_date in sp_date_result.all():
+                    last_purchase_dates_map.setdefault(str(client_id), []).append(last_date)
+            except Exception as e:
+                print(f"[OVERVIEW] Error fetching Session dates: {e}")
+
+            # 3. Gym Membership - max(purchased_at)
+            try:
+                gm_date_stmt = select(
+                    FittbotGymMembership.client_id,
+                    func.max(FittbotGymMembership.purchased_at).label('last_date')
+                ).where(
+                    func.cast(FittbotGymMembership.client_id, String).in_(client_ids_on_page)
+                ).group_by(FittbotGymMembership.client_id)
+                gm_date_result = await db.execute(gm_date_stmt)
+                for client_id, last_date in gm_date_result.all():
+                    last_purchase_dates_map.setdefault(str(client_id), []).append(last_date)
+            except Exception as e:
+                print(f"[OVERVIEW] Error fetching Gym Membership dates: {e}")
+
         # Fetch conversion details for clients on this page
         conversion_details_map = {}
         if client_ids_on_page:
@@ -250,6 +299,10 @@ async def get_users_overview(
             plan_name = get_plan_name_from_product_id(result.subscription_product_id)
             client_id_str = str(result.client_id)
 
+            # Calculate last purchased date (max of all purchase dates)
+            dates = last_purchase_dates_map.get(client_id_str, [])
+            last_purchased_date = max(dates) if dates else None
+
             user_data = {
                 "client_id": result.client_id,
                 "name": result.name,
@@ -259,7 +312,8 @@ async def get_users_overview(
                 "access_status": access_status,
                 "plan_name": plan_name,
                 "created_at": result.created_at.isoformat() if result.created_at else None,
-                "conversion": conversion_details_map.get(client_id_str)  # Add conversion data
+                "conversion": conversion_details_map.get(client_id_str),  # Add conversion data
+                "last_purchased_date": last_purchased_date.isoformat() if last_purchased_date else None  # Add last purchase date
             }
             users.append(user_data)
 
