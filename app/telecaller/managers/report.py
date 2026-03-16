@@ -16,12 +16,12 @@ Metrics:
 - No Response: Count of latest entries per (telecaller_id, gym_id) with call_status='no_response'
 - Out of Service: Count of latest entries per (telecaller_id, gym_id) with call_status='out_of_service'
 
-All endpoints use AsyncSession and avoid any blocking operations.
+All endpoints use AsyncSession, avoid N+1 queries with bulk aggregations.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, or_, func, not_, desc, select
+from sqlalchemy import and_, or_, func, not_, desc, select, case
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, date, timedelta
 import pytz
@@ -88,7 +88,7 @@ def get_month_date_range(ist_tz) -> Tuple[datetime, datetime]:
 
 
 # ============================================================================
-# Core Function to Build Performance Report
+# Core Function to Build Performance Report (OPTIMIZED - No N+1 Queries)
 # ============================================================================
 
 async def build_performance_report(
@@ -104,11 +104,13 @@ async def build_performance_report(
     """
     Core function to build performance report for given date range.
 
+    OPTIMIZED: Uses bulk aggregated queries to eliminate N+1 query pattern.
+    Only 4 database queries total regardless of number of telecallers.
+
     Logic:
-    1. Total Calls: Count gym_call_logs entries for telecaller_ids in date range
-    2. Converted: Count converted_status entries in date range
-    3. Rejected/Follow-up/No Response/Out of Service: Get latest entry per
-       (telecaller_id, gym_id) and count by call_status
+    1. Total Calls: Single bulk COUNT query GROUP BY telecaller_id
+    2. Converted: Single bulk COUNT query GROUP BY telecaller_id
+    3. Status Counts: Single query with GROUP BY to get latest logs + status counts
 
     Note: Database stores datetimes in IST (local server time), not UTC.
     So we query directly with IST dates.
@@ -118,110 +120,130 @@ async def build_performance_report(
     start_date_db = start_date.replace(tzinfo=None)
     end_date_db = end_date.replace(tzinfo=None)
 
+    # ====================================================================
+    # QUERY 1: Total Calls - Single bulk query with GROUP BY
+    # ====================================================================
+
+    total_calls_query = select(
+        GymCallLogs.telecaller_id,
+        func.count(GymCallLogs.id).label('total_calls')
+    ).where(
+        and_(
+            GymCallLogs.telecaller_id.in_(telecaller_ids),
+            GymCallLogs.created_at >= start_date_db,
+            GymCallLogs.created_at <= end_date_db
+        )
+    ).group_by(GymCallLogs.telecaller_id)
+
+    total_calls_result = await db.execute(total_calls_query)
+    total_calls_map = {row.telecaller_id: row.total_calls for row in total_calls_result.all()}
+
+    # ====================================================================
+    # QUERY 2: Converted - Single bulk query with GROUP BY
+    # ====================================================================
+
+    converted_query = select(
+        ConvertedStatus.telecaller_id,
+        func.count(ConvertedStatus.id).label('converted_count')
+    ).where(
+        and_(
+            ConvertedStatus.telecaller_id.in_(telecaller_ids),
+            ConvertedStatus.created_at >= start_date_db,
+            ConvertedStatus.created_at <= end_date_db
+        )
+    ).group_by(ConvertedStatus.telecaller_id)
+
+    converted_result = await db.execute(converted_query)
+    converted_map = {row.telecaller_id: row.converted_count for row in converted_result.all()}
+
+    # ====================================================================
+    # QUERY 3: Get Latest Entry Per (telecaller_id, gym_id) - Single bulk query
+    # ====================================================================
+
+    # Subquery to get the latest entry for each gym by each telecaller
+    latest_log_subquery = (
+        select(
+            GymCallLogs.telecaller_id,
+            GymCallLogs.gym_id,
+            func.max(GymCallLogs.created_at).label('max_created')
+        )
+        .where(GymCallLogs.telecaller_id.in_(telecaller_ids))
+        .group_by(GymCallLogs.telecaller_id, GymCallLogs.gym_id)
+        .subquery()
+    )
+
+    # Get all latest logs with their statuses in a single query
+    latest_logs_query = (
+        select(
+            latest_log_subquery.c.telecaller_id,
+            latest_log_subquery.c.gym_id,
+            GymCallLogs.call_status,
+            GymCallLogs.created_at
+        )
+        .join(
+            GymCallLogs,
+            and_(
+                GymCallLogs.telecaller_id == latest_log_subquery.c.telecaller_id,
+                GymCallLogs.gym_id == latest_log_subquery.c.gym_id,
+                GymCallLogs.created_at == latest_log_subquery.c.max_created
+            )
+        )
+    )
+
+    latest_logs_result = await db.execute(latest_logs_query)
+    latest_logs = latest_logs_result.all()
+
+    # ====================================================================
+    # PROCESS: Group by telecaller and count statuses in memory (no additional DB queries)
+    # ====================================================================
+
+    # Initialize stats maps
+    status_counts = {
+        tc_id: {
+            'rejected': 0,
+            'follow_up': 0,
+            'no_response': 0,
+            'out_of_service': 0
+        }
+        for tc_id in telecaller_ids
+    }
+
+    # Process latest logs and count by status and telecaller
+    for log in latest_logs:
+        tc_id = log.telecaller_id
+        call_status = log.call_status
+        created_at = log.created_at
+
+        # Only count if within date range
+        if start_date_db <= created_at <= end_date_db:
+            if call_status == 'rejected':
+                status_counts[tc_id]['rejected'] += 1
+            elif call_status == 'follow_up':
+                status_counts[tc_id]['follow_up'] += 1
+            elif call_status == 'no_response':
+                status_counts[tc_id]['no_response'] += 1
+            elif call_status == 'out_of_service':
+                status_counts[tc_id]['out_of_service'] += 1
+
+    # ====================================================================
+    # BUILD RESPONSE: Combine all results
+    # ====================================================================
+
     stats_list = []
 
     for tc_id in telecaller_ids:
         tc_name = telecaller_names[tc_id]
 
-        # ====================================================================
-        # STEP 1: Total Calls - Count gym_call_logs for this telecaller in date range
-        # ====================================================================
-
-        total_calls_query = select(
-            func.count(GymCallLogs.id)
-        ).where(
-            and_(
-                GymCallLogs.telecaller_id == tc_id,
-                GymCallLogs.created_at >= start_date_db,
-                GymCallLogs.created_at <= end_date_db
-            )
-        )
-
-        total_calls_result = await db.execute(total_calls_query)
-        total_calls = total_calls_result.scalar() or 0
-
-        # ====================================================================
-        # STEP 2: Converted - Count converted_status entries in date range
-        # ====================================================================
-
-        converted_query = select(
-            func.count(ConvertedStatus.id)
-        ).where(
-            and_(
-                ConvertedStatus.telecaller_id == tc_id,
-                ConvertedStatus.created_at >= start_date_db,
-                ConvertedStatus.created_at <= end_date_db
-            )
-        )
-
-        converted_result = await db.execute(converted_query)
-        converted = converted_result.scalar() or 0
-
-        # ====================================================================
-        # STEP 3: Get Latest Entry Per (telecaller_id, gym_id) for Status Counts
-        # ====================================================================
-
-        # Subquery to get the latest entry for each gym by this telecaller
-        latest_log_subquery = (
-            select(
-                GymCallLogs.gym_id,
-                func.max(GymCallLogs.created_at).label('max_created')
-            )
-            .where(GymCallLogs.telecaller_id == tc_id)
-            .group_by(GymCallLogs.gym_id)
-            .subquery()
-        )
-
-        # Get all latest logs for this telecaller
-        latest_logs_query = (
-            select(
-                GymCallLogs.gym_id,
-                GymCallLogs.call_status,
-                GymCallLogs.created_at
-            )
-            .join(
-                latest_log_subquery,
-                and_(
-                    GymCallLogs.gym_id == latest_log_subquery.c.gym_id,
-                    GymCallLogs.created_at == latest_log_subquery.c.max_created
-                )
-            )
-            .where(GymCallLogs.telecaller_id == tc_id)
-        )
-
-        latest_logs_result = await db.execute(latest_logs_query)
-        latest_logs = latest_logs_result.all()
-
-        # Now filter by date range and count by status
-        # Database stores IST times, so compare directly with start_date_db and end_date_db
-        rejected = 0
-        follow_up = 0
-        no_response = 0
-        out_of_service = 0
-
-        for log in latest_logs:
-            # Check if this log falls within the date range
-            # Database times are IST, start_date_db/end_date_db are also IST
-            if start_date_db <= log.created_at <= end_date_db:
-                if log.call_status == 'rejected':
-                    rejected += 1
-                elif log.call_status == 'follow_up':
-                    follow_up += 1
-                elif log.call_status == 'no_response':
-                    no_response += 1
-                elif log.call_status == 'out_of_service':
-                    out_of_service += 1
-
         stats_list.append(
             TelecallerPerformanceStats(
                 telecaller_id=tc_id,
                 telecaller_name=tc_name,
-                total_calls=total_calls,
-                converted=converted,
-                rejected=rejected,
-                follow_up=follow_up,
-                no_response=no_response,
-                out_of_service=out_of_service
+                total_calls=total_calls_map.get(tc_id, 0),
+                converted=converted_map.get(tc_id, 0),
+                rejected=status_counts[tc_id]['rejected'],
+                follow_up=status_counts[tc_id]['follow_up'],
+                no_response=status_counts[tc_id]['no_response'],
+                out_of_service=status_counts[tc_id]['out_of_service']
             )
         )
 
@@ -244,7 +266,9 @@ async def get_today_performance_report(
     """
     Get performance report for all telecallers for today's calls.
 
-    Returns stats for calls made today and follow-ups scheduled for today.
+    Returns stats for calls made today.
+
+    OPTIMIZED: Uses only 3 database queries regardless of telecaller count.
     """
     try:
         ist_tz = pytz.timezone('Asia/Kolkata')
@@ -301,8 +325,9 @@ async def get_week_performance_report(
     """
     Get performance report for all telecallers for this week's calls.
 
-    Returns stats for calls made this week (Monday to today) and
-    follow-ups scheduled for this week.
+    Returns stats for calls made this week (Monday to today).
+
+    OPTIMIZED: Uses only 3 database queries regardless of telecaller count.
     """
     try:
         ist_tz = pytz.timezone('Asia/Kolkata')
@@ -359,8 +384,9 @@ async def get_month_performance_report(
     """
     Get performance report for all telecallers for this month's calls.
 
-    Returns stats for calls made this month and follow-ups scheduled
-    for this month.
+    Returns stats for calls made this month.
+
+    OPTIMIZED: Uses only 3 database queries regardless of telecaller count.
     """
     try:
         ist_tz = pytz.timezone('Asia/Kolkata')

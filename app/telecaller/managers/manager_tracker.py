@@ -131,9 +131,9 @@ class OtherStatusCursorPaginatedResponse(BaseModel):
 
 @router.get("/pending-gyms", response_model=ManagerCursorPaginatedResponse)
 async def get_manager_pending_gyms(
-    cursor: Optional[str] = Query(None, description="Encoded cursor for pagination"),
-    page_size: int = Query(50, ge=1, le=100, description="Number of items per page"),
-    include_total_count: bool = Query(False, description="Include total count"),
+    skip: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of items per page"),
+    include_total_count: bool = Query(True, description="Include total count"),
     target_date_filter: Optional[str] = Query(None, description="Filter by target date: today, this_week, this_month, custom, overdue"),
     target_start_date: Optional[date] = Query(None, description="Target start date for custom filter"),
     target_end_date: Optional[date] = Query(None, description="Target end date for custom filter"),
@@ -162,27 +162,6 @@ async def get_manager_pending_gyms(
 
         ist_tz = pytz.timezone('Asia/Kolkata')
         today = date.today()
-
-        # Decode cursor
-        last_target_date = None
-        last_assigned_at = None
-        last_gym_id = None
-        last_gym_name = None
-
-        if cursor:
-            try:
-                cursor_data = json.loads(base64.b64decode(unquote(cursor)))
-                last_target_date_str = cursor_data.get("target_date")
-                last_assigned_at_str = cursor_data.get("assigned_at")
-                last_gym_id = cursor_data.get("gym_id")
-                last_gym_name = cursor_data.get("gym_name")
-
-                if last_target_date_str:
-                    last_target_date = date.fromisoformat(last_target_date_str)
-                if last_assigned_at_str:
-                    last_assigned_at = datetime.fromisoformat(last_assigned_at_str)
-            except Exception:
-                pass
 
         # Determine sort column
         sort_column = GymAssignment.target_date if sort_by == "target_date" else GymAssignment.assigned_at if sort_by == "assigned_at" else GymDatabase.gym_name
@@ -266,80 +245,21 @@ async def get_manager_pending_gyms(
                 )
             )
 
-        # CURSOR-BASED PAGINATION
-        if cursor and (last_target_date is not None or last_assigned_at is not None or last_gym_name is not None):
-            if sort_by == "target_date":
-                if last_target_date is not None:
-                    if sort_order == "desc":
-                        base_query = base_query.where(
-                            or_(
-                                GymAssignment.target_date < last_target_date,
-                                and_(
-                                    GymAssignment.target_date == last_target_date,
-                                    GymDatabase.id < last_gym_id if last_gym_id else True
-                                )
-                            )
-                        )
-                    else:
-                        base_query = base_query.where(
-                            or_(
-                                GymAssignment.target_date > last_target_date,
-                                and_(
-                                    GymAssignment.target_date == last_target_date,
-                                    GymDatabase.id > last_gym_id if last_gym_id else True
-                                )
-                            )
-                        )
-            elif sort_by == "assigned_at":
-                if last_assigned_at is not None:
-                    if sort_order == "desc":
-                        base_query = base_query.where(
-                            or_(
-                                GymAssignment.assigned_at < last_assigned_at,
-                                and_(
-                                    GymAssignment.assigned_at == last_assigned_at,
-                                    GymDatabase.id < last_gym_id if last_gym_id else True
-                                )
-                            )
-                        )
-                    else:
-                        base_query = base_query.where(
-                            or_(
-                                GymAssignment.assigned_at > last_assigned_at,
-                                and_(
-                                    GymAssignment.assigned_at == last_assigned_at,
-                                    GymDatabase.id > last_gym_id if last_gym_id else True
-                                )
-                            )
-                        )
-            elif sort_by == "gym_name":
-                if last_gym_name is not None:
-                    if sort_order == "desc":
-                        base_query = base_query.where(GymDatabase.gym_name < last_gym_name)
-                    else:
-                        base_query = base_query.where(GymDatabase.gym_name > last_gym_name)
-
         # Apply sorting
         if sort_order == "desc":
             base_query = base_query.order_by(desc(sort_column), desc(GymDatabase.id))
         else:
             base_query = base_query.order_by(sort_column, GymDatabase.id)
 
-        # Apply pagination
-        paginated_query = base_query.limit(page_size + 1)
+        # Apply offset-based pagination
+        paginated_query = base_query.offset(skip).limit(limit)
 
         # Execute query
         result = await db.execute(paginated_query)
         rows = result.all()
 
-        # Check if there are more results
-        has_more = len(rows) > page_size
-        if has_more:
-            rows = rows[:page_size]
-
         # Process results
         gyms = []
-        next_cursor_data = None
 
         for row in rows:
             (gym_id, gym_name, contact_person, contact_phone, city, address,
@@ -376,21 +296,7 @@ async def get_manager_pending_gyms(
             )
             gyms.append(gym_item)
 
-            # Store cursor data
-            next_cursor_data = {
-                "target_date": target_date.isoformat() if target_date else None,
-                "assigned_at": assigned_at.isoformat() if assigned_at else None,
-                "gym_id": gym_id,
-                "gym_name": gym_name
-            }
-
-        # Encode next cursor
-        next_cursor = None
-        if has_more and next_cursor_data:
-            cursor_json = json.dumps(next_cursor_data)
-            next_cursor = quote(base64.b64encode(cursor_json.encode()).decode())
-
-        # Get total count only if requested
+        # Get total count
         total_count = None
         if include_total_count:
             count_query = select(func.count(GymDatabase.id)).select_from(
@@ -453,9 +359,9 @@ async def get_manager_pending_gyms(
 
         return ManagerCursorPaginatedResponse(
             gyms=gyms,
-            next_cursor=next_cursor,
-            has_more=has_more,
-            page_size=page_size,
+            next_cursor=None,
+            has_more=False,
+            page_size=limit,
             total_count=total_count
         )
 
@@ -533,9 +439,9 @@ async def get_manager_pending_count(
 
 @router.get("/follow-up-gyms", response_model=FollowUpCursorPaginatedResponse)
 async def get_manager_follow_up_gyms(
-    cursor: Optional[str] = Query(None, description="Encoded cursor for pagination"),
-    page_size: int = Query(50, ge=1, le=100, description="Number of items per page"),
-    include_total_count: bool = Query(False, description="Include total count"),
+    skip: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of items per page"),
+    include_total_count: bool = Query(True, description="Include total count"),
     follow_up_filter: Optional[str] = Query(None, description="Filter by follow-up date: today, this_week, this_month, overdue, custom"),
     follow_up_start_date: Optional[date] = Query(None, description="Follow-up start date for custom filter"),
     follow_up_end_date: Optional[date] = Query(None, description="Follow-up end date for custom filter"),
@@ -564,27 +470,6 @@ async def get_manager_follow_up_gyms(
         ist_tz = pytz.timezone('Asia/Kolkata')
         today = date.today()
 
-        # Decode cursor
-        last_follow_up_date = None
-        last_created_at = None
-        last_gym_id = None
-        last_gym_name = None
-
-        if cursor:
-            try:
-                cursor_data = json.loads(base64.b64decode(unquote(cursor)))
-                last_follow_up_date_str = cursor_data.get("follow_up_date")
-                last_created_at_str = cursor_data.get("created_at")
-                last_gym_id = cursor_data.get("gym_id")
-                last_gym_name = cursor_data.get("gym_name")
-
-                if last_follow_up_date_str:
-                    last_follow_up_date = datetime.fromisoformat(last_follow_up_date_str)
-                if last_created_at_str:
-                    last_created_at = datetime.fromisoformat(last_created_at_str)
-            except Exception:
-                pass
-
         # Determine sort column
         if sort_by == "follow_up_date":
             sort_column = GymCallLogs.follow_up_date
@@ -593,10 +478,11 @@ async def get_manager_follow_up_gyms(
         else:
             sort_column = GymDatabase.gym_name
 
-        # Get latest log for each gym
+        # Get latest log for each gym - use composite key (created_at, id) to ensure exactly one row per gym
         latest_log_subq = select(
             GymCallLogs.gym_id,
-            func.max(GymCallLogs.created_at).label('max_created')
+            func.max(GymCallLogs.created_at).label('max_created'),
+            func.max(GymCallLogs.id).label('max_id')
         ).group_by(GymCallLogs.gym_id).subquery()
 
         # Build main query
@@ -630,7 +516,8 @@ async def get_manager_follow_up_gyms(
             latest_log_subq,
             and_(
                 GymCallLogs.gym_id == latest_log_subq.c.gym_id,
-                GymCallLogs.created_at == latest_log_subq.c.max_created
+                GymCallLogs.created_at == latest_log_subq.c.max_created,
+                GymCallLogs.id == latest_log_subq.c.max_id
             )
         ).join(
             Telecaller,
@@ -695,76 +582,18 @@ async def get_manager_follow_up_gyms(
                 )
             )
 
-        # CURSOR-BASED PAGINATION
-        if cursor and (last_follow_up_date is not None or last_created_at is not None or last_gym_name is not None):
-            if sort_by == "follow_up_date":
-                if last_follow_up_date is not None:
-                    if sort_order == "desc":
-                        base_query = base_query.where(
-                            or_(
-                                GymCallLogs.follow_up_date < last_follow_up_date,
-                                and_(
-                                    GymCallLogs.follow_up_date == last_follow_up_date,
-                                    GymDatabase.id < last_gym_id if last_gym_id else True
-                                )
-                            )
-                        )
-                    else:
-                        base_query = base_query.where(
-                            or_(
-                                GymCallLogs.follow_up_date > last_follow_up_date,
-                                and_(
-                                    GymCallLogs.follow_up_date == last_follow_up_date,
-                                    GymDatabase.id > last_gym_id if last_gym_id else True
-                                )
-                            )
-                        )
-            elif sort_by == "last_call_date":
-                if last_created_at is not None:
-                    if sort_order == "desc":
-                        base_query = base_query.where(
-                            or_(
-                                GymCallLogs.created_at < last_created_at,
-                                and_(
-                                    GymCallLogs.created_at == last_created_at,
-                                    GymDatabase.id < last_gym_id if last_gym_id else True
-                                )
-                            )
-                        )
-                    else:
-                        base_query = base_query.where(
-                            or_(
-                                GymCallLogs.created_at > last_created_at,
-                                and_(
-                                    GymCallLogs.created_at == last_created_at,
-                                    GymDatabase.id > last_gym_id if last_gym_id else True
-                                )
-                            )
-                        )
-            elif sort_by == "gym_name":
-                if last_gym_name is not None:
-                    if sort_order == "desc":
-                        base_query = base_query.where(GymDatabase.gym_name < last_gym_name)
-                    else:
-                        base_query = base_query.where(GymDatabase.gym_name > last_gym_name)
-
         # Apply sorting
         if sort_order == "desc":
             base_query = base_query.order_by(desc(sort_column), desc(GymDatabase.id))
         else:
             base_query = base_query.order_by(sort_column, GymDatabase.id)
 
-        # Apply pagination
-        paginated_query = base_query.limit(page_size + 1)
+        # Apply offset-based pagination
+        paginated_query = base_query.offset(skip).limit(limit)
 
         # Execute query
         result = await db.execute(paginated_query)
         rows = result.all()
-
-        # Check if there are more results
-        has_more = len(rows) > page_size
-        if has_more:
-            rows = rows[:page_size]
 
         # Get delegated telecaller IDs for batch query
         delegated_telecaller_ids = list(set([
@@ -784,7 +613,6 @@ async def get_manager_follow_up_gyms(
 
         # Process results
         gyms = []
-        next_cursor_data = None
 
         for row in rows:
             (gym_id, gym_name, contact_person, contact_phone, city, address,
@@ -832,20 +660,6 @@ async def get_manager_follow_up_gyms(
                 delegated_by_name=delegated_by_names.get(log_telecaller_id) if log_telecaller_id != telecaller_id else None
             )
             gyms.append(gym_item)
-
-            # Store cursor data
-            next_cursor_data = {
-                "follow_up_date": follow_up_date_iso,
-                "created_at": created_at_iso,
-                "gym_id": gym_id,
-                "gym_name": gym_name
-            }
-
-        # Encode next cursor
-        next_cursor = None
-        if has_more and next_cursor_data:
-            cursor_json = json.dumps(next_cursor_data)
-            next_cursor = quote(base64.b64encode(cursor_json.encode()).decode())
 
         # Get total count only if requested
         total_count = None
@@ -921,9 +735,9 @@ async def get_manager_follow_up_gyms(
 
         return FollowUpCursorPaginatedResponse(
             gyms=gyms,
-            next_cursor=next_cursor,
-            has_more=has_more,
-            page_size=page_size,
+            next_cursor=None,
+            has_more=False,
+            page_size=limit,
             total_count=total_count
         )
 
@@ -938,9 +752,9 @@ async def get_manager_follow_up_gyms(
 @router.get("/other-status-gyms", response_model=OtherStatusCursorPaginatedResponse)
 async def get_manager_other_status_gyms(
     call_status: str = Query(..., description="Status: converted, rejected, no_response, out_of_service"),
-    cursor: Optional[str] = Query(None, description="Encoded cursor for pagination"),
-    page_size: int = Query(50, ge=1, le=100, description="Number of items per page"),
-    include_total_count: bool = Query(False, description="Include total count"),
+    skip: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of items per page"),
+    include_total_count: bool = Query(True, description="Include total count"),
     status_date_filter: Optional[str] = Query(None, description="Filter by status date: today, this_week, this_month, custom"),
     status_start_date: Optional[date] = Query(None, description="Status start date for custom filter"),
     status_end_date: Optional[date] = Query(None, description="Status end date for custom filter"),
@@ -972,30 +786,14 @@ async def get_manager_other_status_gyms(
         if call_status not in valid_statuses:
             raise HTTPException(status_code=400, detail=f"Invalid call_status. Must be one of: {', '.join(valid_statuses)}")
 
-        # Decode cursor
-        last_created_at = None
-        last_gym_id = None
-        last_gym_name = None
-
-        if cursor:
-            try:
-                cursor_data = json.loads(base64.b64decode(unquote(cursor)))
-                last_created_at_str = cursor_data.get("created_at")
-                last_gym_id = cursor_data.get("gym_id")
-                last_gym_name = cursor_data.get("gym_name")
-
-                if last_created_at_str:
-                    last_created_at = datetime.fromisoformat(last_created_at_str)
-            except Exception:
-                pass
-
         # Determine sort column
         sort_column = GymCallLogs.created_at if sort_by == "call_date" else GymDatabase.gym_name
 
-        # Get latest log for each gym
+        # Get latest log for each gym - use composite key (created_at, id) to ensure exactly one row per gym
         latest_log_subq = select(
             GymCallLogs.gym_id,
-            func.max(GymCallLogs.created_at).label('max_created')
+            func.max(GymCallLogs.created_at).label('max_created'),
+            func.max(GymCallLogs.id).label('max_id')
         ).group_by(GymCallLogs.gym_id).subquery()
 
         # Build main query
@@ -1026,7 +824,8 @@ async def get_manager_other_status_gyms(
             latest_log_subq,
             and_(
                 GymCallLogs.gym_id == latest_log_subq.c.gym_id,
-                GymCallLogs.created_at == latest_log_subq.c.max_created
+                GymCallLogs.created_at == latest_log_subq.c.max_created,
+                GymCallLogs.id == latest_log_subq.c.max_id
             )
         ).join(
             Telecaller,
@@ -1110,54 +909,77 @@ async def get_manager_other_status_gyms(
                 )
             )
 
-        # CURSOR-BASED PAGINATION
-        if cursor and (last_created_at is not None or last_gym_name is not None):
-            if sort_by == "call_date":
-                if last_created_at is not None:
-                    if sort_order == "desc":
-                        base_query = base_query.where(
-                            or_(
-                                GymCallLogs.created_at < last_created_at,
-                                and_(
-                                    GymCallLogs.created_at == last_created_at,
-                                    GymDatabase.id < last_gym_id if last_gym_id else True
-                                )
-                            )
-                        )
-                    else:
-                        base_query = base_query.where(
-                            or_(
-                                GymCallLogs.created_at > last_created_at,
-                                and_(
-                                    GymCallLogs.created_at == last_created_at,
-                                    GymDatabase.id > last_gym_id if last_gym_id else True
-                                )
-                            )
-                        )
-            elif sort_by == "gym_name":
-                if last_gym_name is not None:
-                    if sort_order == "desc":
-                        base_query = base_query.where(GymDatabase.gym_name < last_gym_name)
-                    else:
-                        base_query = base_query.where(GymDatabase.gym_name > last_gym_name)
-
         # Apply sorting
         if sort_order == "desc":
             base_query = base_query.order_by(desc(sort_column), desc(GymDatabase.id))
         else:
             base_query = base_query.order_by(sort_column, GymDatabase.id)
 
-        # Apply pagination
-        paginated_query = base_query.limit(page_size + 1)
+        # Get total count BEFORE pagination (so it's consistent across pages)
+        total_count = None
+        if include_total_count:
+            # Count distinct gym_ids that match all filters
+            count_query = select(func.count(func.distinct(GymDatabase.id))).select_from(
+                GymDatabase
+            ).join(
+                GymCallLogs,
+                GymDatabase.id == GymCallLogs.gym_id
+            ).join(
+                latest_log_subq,
+                and_(
+                    GymCallLogs.gym_id == latest_log_subq.c.gym_id,
+                    GymCallLogs.created_at == latest_log_subq.c.max_created,
+                    GymCallLogs.id == latest_log_subq.c.max_id
+                )
+            ).join(
+                Telecaller,
+                GymCallLogs.telecaller_id == Telecaller.id
+            ).where(
+                and_(
+                    Telecaller.manager_id == manager.id,
+                    GymCallLogs.call_status == call_status
+                )
+            )
+
+            # Apply same filters as main query
+            if telecaller_id:
+                count_query = count_query.where(GymCallLogs.telecaller_id == telecaller_id)
+            if type:
+                count_query = count_query.where(GymDatabase.type == type)
+            if status_date_filter and status_date_filter != "all":
+                if status_date_filter == "today":
+                    count_query = count_query.where(func.date(GymCallLogs.created_at) == today)
+                elif status_date_filter == "this_week":
+                    week_start = today - timedelta(days=today.weekday())
+                    week_end = week_start + timedelta(days=6)
+                    count_query = count_query.where(func.date(GymCallLogs.created_at).between(week_start, week_end))
+                elif status_date_filter == "this_month":
+                    count_query = count_query.where(
+                        and_(
+                            func.extract('year', GymCallLogs.created_at) == today.year,
+                            func.extract('month', GymCallLogs.created_at) == today.month
+                        )
+                    )
+                elif status_date_filter == "custom" and status_start_date and status_end_date:
+                    count_query = count_query.where(func.date(GymCallLogs.created_at).between(status_start_date, status_end_date))
+            if search_query:
+                search_pattern = f"%{search_query}%"
+                count_query = count_query.where(
+                    or_(
+                        GymDatabase.gym_name.ilike(search_pattern),
+                        GymDatabase.contact_person.ilike(search_pattern)
+                    )
+                )
+
+            count_result = await db.execute(count_query)
+            total_count = count_result.scalar() or 0
+
+        # Apply offset-based pagination
+        paginated_query = base_query.offset(skip).limit(limit)
 
         # Execute query
         result = await db.execute(paginated_query)
         rows = result.all()
-
-        # Check if there are more results
-        has_more = len(rows) > page_size
-        if has_more:
-            rows = rows[:page_size]
 
         # For converted status, fetch converted_status data in batch
         gym_ids = [row[0] for row in rows]
@@ -1179,7 +1001,6 @@ async def get_manager_other_status_gyms(
 
         # Process results
         gyms = []
-        next_cursor_data = None
 
         for row in rows:
             (gym_id, gym_name, contact_person, contact_phone, city, address,
@@ -1227,81 +1048,11 @@ async def get_manager_other_status_gyms(
             )
             gyms.append(gym_item)
 
-            # Store cursor data
-            next_cursor_data = {
-                "created_at": created_at_iso,
-                "gym_id": gym_id,
-                "gym_name": gym_name
-            }
-
-        # Encode next cursor
-        next_cursor = None
-        if has_more and next_cursor_data:
-            cursor_json = json.dumps(next_cursor_data)
-            next_cursor = quote(base64.b64encode(cursor_json.encode()).decode())
-
-        # Get total count only if requested
-        total_count = None
-        if include_total_count:
-            count_query = select(func.count(GymDatabase.id)).select_from(
-                GymDatabase
-            ).join(
-                GymCallLogs,
-                GymDatabase.id == GymCallLogs.gym_id
-            ).join(
-                latest_log_subq,
-                and_(
-                    GymCallLogs.gym_id == latest_log_subq.c.gym_id,
-                    GymCallLogs.created_at == latest_log_subq.c.max_created
-                )
-            ).join(
-                Telecaller,
-                GymCallLogs.telecaller_id == Telecaller.id
-            ).where(
-                and_(
-                    Telecaller.manager_id == manager.id,
-                    GymCallLogs.call_status == call_status
-                )
-            )
-
-            # Apply same filters
-            if telecaller_id:
-                count_query = count_query.where(GymCallLogs.telecaller_id == telecaller_id)
-            if type:
-                count_query = count_query.where(GymDatabase.type == type)
-            if status_date_filter and status_date_filter != "all":
-                if status_date_filter == "today":
-                    count_query = count_query.where(func.date(GymCallLogs.created_at) == today)
-                elif status_date_filter == "this_week":
-                    week_start = today - timedelta(days=today.weekday())
-                    week_end = week_start + timedelta(days=6)
-                    count_query = count_query.where(func.date(GymCallLogs.created_at).between(week_start, week_end))
-                elif status_date_filter == "this_month":
-                    count_query = count_query.where(
-                        and_(
-                            func.extract('year', GymCallLogs.created_at) == today.year,
-                            func.extract('month', GymCallLogs.created_at) == today.month
-                        )
-                    )
-                elif status_date_filter == "custom" and status_start_date and status_end_date:
-                    count_query = count_query.where(func.date(GymCallLogs.created_at).between(status_start_date, status_end_date))
-            if search_query:
-                search_pattern = f"%{search_query}%"
-                count_query = count_query.where(
-                    or_(
-                        GymDatabase.gym_name.ilike(search_pattern),
-                        GymDatabase.contact_person.ilike(search_pattern)
-                    )
-                )
-
-            count_result = await db.execute(count_query)
-            total_count = count_result.scalar() or 0
-
         return OtherStatusCursorPaginatedResponse(
             gyms=gyms,
-            next_cursor=next_cursor,
-            has_more=has_more,
-            page_size=page_size,
+            next_cursor=None,
+            has_more=False,
+            page_size=limit,
             total_count=total_count
         )
 
