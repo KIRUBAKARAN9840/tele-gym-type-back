@@ -1,0 +1,1552 @@
+{
+    "ABS": {
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Flat Bench Situps",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatbenchsitups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flatbenchsitups.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/flatbenchsitups.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatbenchsitups.png"
+            },
+            {
+                "name": "Incline Bench Situps",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinebenchsitups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/inclinebenchsitups.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinebenchsitups.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/inclinebenchsitups.png"
+            },
+            {
+                "name": "Russian Twists",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/russiantwist.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/russiantwists.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/russiantwist.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/russiantwists.png"
+            },
+            {
+                "name": "Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/CRUNCHES.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/Crunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/Crunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/Crunches.png"
+            },
+            {
+                "name": "Incline Twisting Sit-Up",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinetwistingsitups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/inclinetwistingsitup.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinetwistingsitup.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/inclinetwistingsitup.png"
+            },
+            {
+                "name": "Reverse Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/reversecrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/reversecrunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/reversecrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/reversecrunches.png"
+            },
+            {
+                "name": "Dumbbell Russian Twist",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellrussiantwist.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellrussiantwist.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellrussiantwist.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellrussiantwist.png"
+            },
+            {
+                "name": "Flutter Kicks",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flutterkicks.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flutterkicks.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/flutterkicks.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flutterkicks.png"
+            },
+            {
+                "name": "Bench Oblique Crunch",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/benchobliquecrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/benchobliquecrunch.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/benchobliquecrunch.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/benchobliquecrunch.png"
+            },
+            {
+                "name": "V With Rotations",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/vwithrotations.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/vwithrotations.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/vwithrotations.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/vwithrotations.png"
+            },
+            {
+                "name": "Weighted Cable Seated Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/weightedcableseatedcrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/weightedcableseatedcrunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/weightedcableseatedcrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/weightedcableseatedcrunches.png"
+            },
+            {
+                "name": "Knee To Elbow",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/kneetoelbow.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/kneetoelbow.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/kneetoelbow.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/kneetoelbow.png"
+            },
+            {
+                "name": "Half Wipers",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/halfwipers.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/halfwipers.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/halfwipers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/halfwipers.png"
+            },
+            {
+                "name": "Stability Ball Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/stabilityballcrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/stabilltyballcrunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/stabilltyballcrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/stabilltyballcrunches.png"
+            },
+            {
+                "name": "High Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/highcrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/highcrunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/highcrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/highcrunches.png"
+            },
+            {
+                "name": "Lying Flat Bench Knee Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/lyingflatbenchkneerises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/lyingflatbenchkneeraises.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/lyingflatbenchkneeraises.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/lyingflatbenchkneeraises.png"
+            },
+            {
+                "name": "Tuck Crunch",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/tuckcrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/tuckcrunch.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/tuckcrunch.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/tuckcrunch.png"
+            },
+            {
+                "name": "Climber Taps",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/climbertaps.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/climbertaps.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/climbertaps.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/climbertaps.png"
+            },
+            {
+                "name": "Seated Ab Crunch",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/seatedabscrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/seatedabscrunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/seatedabcrunch.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/seatedabscrunches.png"
+            },
+            {
+                "name": "Cross Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/crosscrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/crosscrunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/crosscrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/crosscrunches.png"
+            },
+            {
+                "name": "Lying Elbow To Knee",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/lyingelbowtoknee.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/lyingelbowtoknee.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/lyingelbowtoknee.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/lyingelbowtoknee.png"
+            },
+            {
+                "name": "Sit-Ups",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/situps.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/situps.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/situps.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/situps.png"
+            },
+            {
+                "name": "L-Sit",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/lsit.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/lsit.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/lsit.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/lsit.png"
+            },
+            {
+                "name": "Side Jack-Knives",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/sidejackknives.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/sidejackknives.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/sidejackknives.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/sidejackknives.png"
+            },
+            {
+                "name": "Dead Bug",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/deadbug.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/deadbug.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/deadbug.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/deadbug.png"
+            },
+            {
+                "name": "Wipers",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/WIPERS.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/Wipers.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/Wipers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/Wipers.png"
+            },
+            {
+                "name": "Long Arm Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/longarmcrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/longarmcrunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/longarmcrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/longarmcrunches.png"
+            },
+            {
+                "name": "Pulse-Ups",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/pulseups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/pulseups.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/pulseups.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/pulseups.png"
+            },
+            {
+                "name": "Star Plank",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/starplank.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/starplank.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/starplank.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/starplank.png"
+            },
+            {
+                "name": "Toe Taps",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/toetaps.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/toetaps.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/toetaps.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/toetaps.png"
+            },
+            {
+                "name": "Plank Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/plankcrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/plankcrunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/plankcrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/plankcrunches.png"
+            },
+            {
+                "name": "Plank Rolls",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/plankrolls.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/plankrolls.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/plankrolls.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/plankrolls.png"
+            },
+            {
+                "name": "Bicycle Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/bicyclecrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/bicyclecrunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/bicyclecrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/bicyclecrunches.png"
+            },
+            {
+                "name": "Hollow Hold",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/hollowholds.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/hollowhold.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/hollowhold.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/hollowhold.png"
+            },
+            {
+                "name": "Sitting Punches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/sittingpunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/sittingpunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/sittingpunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/sittingpunches.png"
+            },
+            {
+                "name": "Side Plank",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/sideplanks.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/sideplank.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/sideplank.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/sideplank.png"
+            },
+            {
+                "name": "Knee-In-Twist",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/kneeintwists.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/kneeintwist.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/kneeintwist.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/kneeintwist.png"
+            },
+            {
+                "name": "Knee Tuck Oblique Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/kneetuckobliquecrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/kneetuckobliquecrunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/kneetuckobliquecrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/kneetuckobliquecrunches.png"
+            },
+            {
+                "name": "Crunch Kicks",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/crunchkicks.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/crunchkicks.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/crunchkicks.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/crunchkicks.png"
+            },
+            {
+                "name": "Side Plank Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/sideplankcrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/sideplankcrunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/sideplankcrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/sideplankcrunches.png"
+            },
+            {
+                "name": "Ab Roller",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/absroller.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/abroller.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/absroller.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/abroller.png"
+            },
+            {
+                "name": "Cable Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cablecrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cablecrunches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cablecrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cablecrunches.png"
+            },
+            {
+                "name": "Abs Crunches Machine",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/abscrunchmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/abscrunchesmachine.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/abscrunchmachine.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/abscrunchesmachine.png"
+            }
+        ],
+        "imagePath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/MALE/ABS_M_NEW.png",
+        "isBodyWeight": true,
+        "isMuscleGroup": true,
+        "imagepath_female": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/FEMALE/ABS_F.png"
+    },
+    "Back": {
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Dumbbell Bent Over Row",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbellbentoverrow.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellbentoverrow.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellbentoverrow.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellbentoverrow.png"
+            },
+            {
+                "name": "Renegade Rows",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/renegaderows.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/renegaderow.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/renegaderows.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/renegaderow.png"
+            },
+            {
+                "name": "Dumbbell Deadlift",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbelldeadlift.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbelldeadlift.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbelldeadlift.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbelldeadlift.png"
+            },
+            {
+                "name": "One Arm Dumbbell Row",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/onearmdumbbellrows.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/onearmdumbellrow.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/onearmdumbbellrows.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/onearmdumbellrow.png"
+            },
+            {
+                "name": "Barbell Bent Over Row",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellbentoverrows.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellbentoverrow.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellbentoverrow.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellbentoverrow.png"
+            },
+            {
+                "name": "Barbell Deadlift",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbelldeadlifts.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbelldeadlift.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbelldeadlift.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbelldeadlift.png"
+            },
+            {
+                "name": "Barbell Shrugs",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellshrugs.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellshrugs.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellshrug.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellshrugs.png"
+            },
+            {
+                "name": "Seated Row Cable",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/seatedcablerows.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/seatedrowcable.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/seatedcablerows.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/seatedrowcable.png"
+            },
+            {
+                "name": "Wide Grip Lat Pulldown",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/widegriplatpulldown.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/widegriplatpulldown.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/widegriplatpulldown.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/widegriplatpulldown.png"
+            },
+            {
+                "name": "Close Grip Lat Pulldown",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/closegriplatpulldown.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/closegriplatpulldown.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/closegriplatpulldown.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/closegriplatpulldown.png"
+            },
+            {
+                "name": "Behind The Neck Lat Pulldown",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/behindnecklatpulldown.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/behindthenecklatpulldown.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/behindnecklatpulldown.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/behindthenecklatpulldown.png"
+            },
+            {
+                "name": "Reverse Grip Lat Pulldown",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/reversegriplatpulldown.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/reversegriplatpulldown.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/reversegriplatpulldown.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/reversegriplatpulldown.png"
+            },
+            {
+                "name": "Smith Machine Bent Over Row",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/bentoversmithmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/smithmachinebentoverrow.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/smithmachinebentoverrows.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/smithmachinebentoverrow.png"
+            }
+        ],
+        "imagePath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/MALE/BACK_M_NEW.png",
+        "isBodyWeight": false,
+        "isMuscleGroup": true,
+        "imagepath_female": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/FEMALE/BACK_F.png"
+    },
+    "Core": {
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Dumbbell Russian Twist",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellrussiantwist.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellrussiantwist.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellrussiantwist.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellrussiantwist.png"
+            },
+            {
+                "name": "Dumbbell Side Bend",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbellsidebend.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellsidebend.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbbellsidebends.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellsidebend.png"
+            },
+            {
+                "name": "Barbell Landmine Rotation",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbelllandminerotation.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbelllandminerotation.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbelllandminerotation.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbelllandminerotation.png"
+            },
+            {
+                "name": "Barbell Rollout",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellrollout.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellrollout.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellrollout.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellrollout.png"
+            },
+            {
+                "name": "Russian Twists",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/russiantwist.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/russiantwists.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/russiantwist.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/russiantwists.png"
+            },
+            {
+                "name": "Flutter Kicks",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flutterkicks.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flutterkicks.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/flutterkicks.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flutterkicks.png"
+            },
+            {
+                "name": "Hip Dips",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/hipdips.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/hipdips.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/hipdips.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/hipdips.png"
+            },
+            {
+                "name": "Reverse Plank Knee Tucks",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/reverseplankkneetucks.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/reverseplankkneetucks.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/reverseplankkneetucks.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/reverseplankkneetucks.png"
+            },
+            {
+                "name": "Side Plank Pulses",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/sideplankpulses.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/sideplankpulses.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/sideplankpulses.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/sideplankpulses.png"
+            },
+            {
+                "name": "Sit Thrus",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/sitthrus.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/sitthrus.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/sitthrus.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/sitthrus.png"
+            },
+            {
+                "name": "Heel Touches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/heeltouches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/heeltouches.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/heeltouches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/heeltouches.png"
+            },
+            {
+                "name": "Lying Leg Lifts",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/lyingleglifts.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/lyingleglifts.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/lyingleglifts.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/lyingleglifts.png"
+            },
+            {
+                "name": "Kneeling Lean Backs",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/kneelingleanback.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/kneelingleanbacks.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/kneelingleanbacks.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/kneelingleanbacks.png"
+            },
+            {
+                "name": "Weighted Single Leg Bridge",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/weightedsinglelegbridge.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/weightedsinglelegbridge.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/weightedsinglelegbridge.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/weightedsinglelegbridge.png"
+            },
+            {
+                "name": "Single Leg Bridge",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/singlelegbridge.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/singlelegbridge.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/singlelegbridge.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/singlelegbridge.png"
+            },
+            {
+                "name": "Bench Leg Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/benchlegrises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/benchlegrises.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/benchlegrises.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/benchlegrises.png"
+            },
+            {
+                "name": "Decline Leg Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinelegrises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declinelegrises.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/declinelegrises.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/declinelegrises.png"
+            },
+            {
+                "name": "Arm / Leg Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/armlegrises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/armlegrises.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/armlegrises.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/armlegrises.png"
+            },
+            {
+                "name": "Leg Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/legrises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/legraises.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/legraises.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/legraises.png"
+            },
+            {
+                "name": "V-Ups",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/vups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/vups.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/vups.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/vups.png"
+            },
+            {
+                "name": "Lat Cable Pullovers",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/latcablepullover.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/latcablepullovers.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/latcablepullovers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/latcablepullovers.png"
+            },
+            {
+                "name": "Hanging Leg Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/hanginglegrises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/hanginglegrises.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/hanginglegrise.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/hanginglegrises.png"
+            },
+            {
+                "name": "Lying Toe Touch",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/lyingtoetouches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/lyingtoetouch.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/lyingtoetouch.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/lyingtoetouch.png"
+            },
+            {
+                "name": "Oblique Crossover",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/obliquecrossovers.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/obliquecrossover.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/obliquecrossovers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/obliquecrossover.png"
+            },
+            {
+                "name": "Seated Bench Leg Raise",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/seatedlegrises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/seatedbenchlegrise.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/seatedbenchlegrises.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/seatedbenchlegrise.png"
+            },
+            {
+                "name": "Single Leg Pullover",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/singlelegpullovers.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/singlelegpullover.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/singlelegpullover.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/singlelegpullover.png"
+            },
+            {
+                "name": "V-UP Claps",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/vupclaps.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/vupclaps.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/vupsclaps.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/vupclaps.png"
+            },
+            {
+                "name": "Lat Cable Pullovers",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/latcablepullover.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/latcablepullovers.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/latcablepullovers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/latcablepullovers.png"
+            },
+            {
+                "name": "Dumbbell Pullover",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellpullover.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellpullover.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellpullover.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellpullover.png"
+            },
+            {
+                "name": "V-UP",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/vups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/vup.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/vups.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/vup.png"
+            },
+            {
+                "name": "Windshield Wiper",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/windshieldwiper.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/windshieldwiper.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/windshieldwispers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/windshieldwiper.png"
+            },
+            {
+                "name": "Weighted Situps",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/weightedsitups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/weightedsitups.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/weightedsitups.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/weightedsitups.png"
+            }
+        ],
+        "imagePath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/MALE/CORE+MALE.png",
+        "isBodyWeight": true,
+        "isMuscleGroup": true,
+        "imagepath_female": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/FEMALE/CORE+FEMALE+(1).png"
+    },
+    "Legs": {
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Dumbbell Squats",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellsquats.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellsquats.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellsquat.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellsquats.png"
+            },
+            {
+                "name": "Dumbbell Lunges",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbelllunges.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbelllunges.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbelllunges.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbelllunges.png"
+            },
+            {
+                "name": "Dumbbell Calf Raise",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbell calfrises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/calfrise.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellcalfrise.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellcalfrise.png"
+            },
+            {
+                "name": "Barbell Back Squat",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellbacksquats.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellbacksquat.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellbacksquats.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellbacksquat.png"
+            },
+            {
+                "name": "Barbell Lunge",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbelllunges.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbelllunge.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbelllunges.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbelllunge.png"
+            },
+            {
+                "name": "Barbell Front Squat",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellfrontsquats.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellfrontsquat.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellfrontsquats.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellfrontsquat.png"
+            },
+            {
+                "name": "Step Ups",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/stepups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/stepups.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/stepups.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/stepups.png"
+            },
+            {
+                "name": "Single Leg Bench Squat",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/singlelegbenchsquats.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/singlelegssquat.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/singlelegbenchsquats.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/singlelegssquat.png"
+            },
+            {
+                "name": "Seated Calf Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/seatedcalfraises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/seatedcalfrises.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/seatedcalfrise.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/seatedcalfrises.png"
+            },
+            {
+                "name": "Calf Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/calfrises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/calfrise.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/calfrise.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/calfrises.png"
+            },
+            {
+                "name": "Smith Machine Squats",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/squatsmithmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/smithmachinesquat.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/smithmachinesquats.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/smithmachinesquat.png"
+            },
+            {
+                "name": "Machine Leg Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/machinelegpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/machinelegpress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/machinelegpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/machinelegpress.png"
+            },
+            {
+                "name": "Machine V-Squat Leg Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/machinelegpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/machinevsquatlegpress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/machinelegpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/machinevsquatlegpress.png"
+            }
+        ],
+        "imagePath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/MALE/LEGS_M_NEW.png",
+        "isBodyWeight": false,
+        "isMuscleGroup": true,
+        "imagepath_female": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/FEMALE/LEGS_F.png"
+    },
+    "Chest": {
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Dumbbell Flat Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatdumbbellchestpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flatdumbellchestpress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellflatbenchpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellflatbenchpress.png"
+            },
+            {
+                "name": "Dumbbell Incline Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinedbenchdumbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/inclinedumbellpress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinebenchdumbellpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellinclinedbenchpress.png"
+            },
+            {
+                "name": "Dumbbell Decline Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinedbenchdumbbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declinebenchpress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/declinebenchdumbellpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbelldeclinedbenchpress.png"
+            },
+            {
+                "name": "Dumbbell Flat Flyes",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatbenchdumbbellflyes.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flatdumbellfly.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/flatbenchfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatflybench.png"
+            },
+            {
+                "name": "Dumbbell Decline Flyes",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinedbenchdumbbellflyes.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declineflybenchdumbell.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbelldeclinedflyes.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbelldeclinefly.png"
+            },
+            {
+                "name": "Barbell Flat Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatbarbellchestpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flatbarbellmachinechestpress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellflatbenchpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatbarbellmachinechestpress.png"
+            },
+            {
+                "name": "Barbell Incline Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinedbenchbarbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/inclinebarbellmachinechestpress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinebenchbarbellpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellinclinebenchpress.png"
+            },
+            {
+                "name": "Barbell Decline Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinedbenchbarbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declinebarbellchestpressmachine.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/declinebenchbarbellpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/declinebarbellchestpressmachine.png"
+            },
+            {
+                "name": "Chest Dips",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/chestdips.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/chestdips.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/chestdips.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/chestdips.png"
+            },
+            {
+                "name": "Cable Flyover",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cableflyovers.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cableflyover.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cableflyovers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cableflyover.png"
+            },
+            {
+                "name": "Chest Pec Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/chestpecfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/chestpecfly.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/chestpecfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/chestpecfly.png"
+            },
+            {
+                "name": "Machine Chest Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/mkachinechestpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flatbarbellmachinechestpress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/machinechestpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatbarbellmachinechestpress.png"
+            },
+            {
+                "name": "Incline Barbell Chest Press-Machine",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinebarbellchestpressmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/inclinebarbellmachinechestpress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinebarbellchestpressmachine.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/inclinebarbellchestpressmachine.png"
+            },
+            {
+                "name": "Decline Barbell Chest Press-Machine",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinebarbellchestpressmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declinebarbellchestpressmachine.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/declinebarbellchestpressmachine.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/declinebarbellchestpressmachine.png"
+            },
+            {
+                "name": "Flat Barbell Chest Press-Machine",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatbarbellchestpressmahine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flatbarbellmachinechestpress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/flatbarbellchestpressmachine.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatbarbellchestpressmachine.png"
+            },
+            {
+                "name": "Suspended Push Up",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/suspendedpushups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/suspendedpushup.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/suspendedpushup.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/suspendedpushup.png"
+            },
+            {
+                "name": "Normal Push Up",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/normalpushup.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/normalpushup.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/normalpushup.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/normalpushup.png"
+            },
+            {
+                "name": "Clapping Push Up",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/clappingpushup.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/clapingpushup.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/clapingpushup.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/clapingpushup.png"
+            },
+            {
+                "name": "Kneeling Cable Chest Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/kneelingcablechestfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/kneelingcablechestfly.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/kneelingcablechestfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/kneelingcablechestfly.png"
+            },
+            {
+                "name": "Cable Low Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cablelowfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cablelowfly.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cablelowfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cablelowfly.png"
+            },
+            {
+                "name": "Incline Cable Chest Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinecablechestfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/inclinecablechestfly.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinecablechestfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/inclinecablechestfly.png"
+            },
+            {
+                "name": "Flat Cable Chest Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatcablechestfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flatcablechestfly.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/flatcablechestfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatcablechestfly.png"
+            },
+            {
+                "name": "Decline Cable Chest Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinecablechestfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declinecablechestfly.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/declinecablechestfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/declinecablechestfly.png"
+            },
+            {
+                "name": "Single Arm Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/singlearmfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/singlearmfly.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/singlearmfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/singlearmfly.png"
+            },
+            {
+                "name": "High To Low Cable Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/hightolowcablefly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/hightolowcablefly.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/hightolowcablefly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/hightolowcablefly.png"
+            },
+            {
+                "name": "Press Up",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/pressup.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/pressup.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/pressup.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/pressup.png"
+            }
+        ],
+        "imagePath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/MALE/CHEST_M_NEW.png",
+        "isBodyWeight": false,
+        "isMuscleGroup": true,
+        "imagepath_female": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/FEMALE/CHEST_F.png"
+    },
+    "Biceps": {
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Biceps Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/bicepcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/bicepscurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/bicepcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/bicepscurl.png"
+            },
+            {
+                "name": "Hammer Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/hammercurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/hammercurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/hammercurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/hammercurl.png"
+            },
+            {
+                "name": "Concentration Curls",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/concentrationcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/concentrationcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/concentrationcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/concentrationcurl.png"
+            },
+            {
+                "name": "Incline Dumbbell Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinedumbellcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/inclinedumbellcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinedumbellcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/inclinedumbellcurl.png"
+            },
+            {
+                "name": "Barbell Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellwristcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellcurl.png"
+            },
+            {
+                "name": "Reverse Barbell Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/reversedumbbellcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/reversebarbellcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/reversedumbellcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/reversebarbellcurl.png"
+            },
+            {
+                "name": "Cable Biceps Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cablebicepcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/bicepscurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cablebicepcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/bicepscurl.png"
+            },
+            {
+                "name": "Cable Hammer Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cablehammercurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cablehummercurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cablehammercurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cablehummercurl.png"
+            },
+            {
+                "name": "Preacher Curl Barbell",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/preachercurlbarbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/preachercurlbarbell.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/preachercurlbarbell.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/preachercurlbarbell.png"
+            },
+            {
+                "name": "High Cable Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/highcablecurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/highcablecurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/highcablecurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/highcablecurl.png"
+            },
+            {
+                "name": "EZ Barbell Bicep Curl Close Grip",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/ezbarbellcurlclosegrip.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/ezbarbellbicepcurlclosegrip.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/ezbarbellbicepcurlclosegrip.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/ezbarbellbicepcurlclosegrip.png"
+            },
+            {
+                "name": "EZ Barbell Bicep Curl Wide Grip",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/ezbarbellcurlwidegrip.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/ezbarbellbicepcurlwidegrip.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/ezbarbellbicepcurlwidegrip.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/ezbarbellbicepcurlwidegrip.png"
+            },
+            {
+                "name": "Preacher Curl Dumbbell",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/preachercurldumbbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/preachercurldumbell.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/preachercurldumbell.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/preachercurldumbell.png"
+            },
+            {
+                "name": "Barbell Curl Close Grip",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellcurlclosegrip.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellcurlclosegrip.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellcurlclosegrip.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellcurlclosegrip.png"
+            },
+            {
+                "name": "Preacher Curl One Hand",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/preachercurlonehand.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/preachercurlonehand.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/preachercurlonehand.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/preachercurlonehand.png"
+            },
+            {
+                "name": "Reverse Dumbbell Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/reversedumbbellcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/reversedumbellcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/reversedumbellcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/reversedumbellcurl.png"
+            },
+            {
+                "name": "Lever Bicep Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/leverbicepcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/leverbicepcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/leverbicepcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/leverbicepcurl.png"
+            },
+            {
+                "name": "Barbell Reverse Curl EZ",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellreversecurlez.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellreversecurlez.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellreversecurlez.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellreversecurlez.png"
+            },
+            {
+                "name": "Barbell Reverse Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellreversecurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellreversecurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellreversecurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellreversecurl.png"
+            },
+            {
+                "name": "Dumbbell High Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellhighcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellhighcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellhighcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellhighcurl.png"
+            },
+            {
+                "name": "Cable Incline Bicep Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cableinclinebicepcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cableinclinebicepcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cableinclinebicepcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cableinclinebicepcurl.png"
+            },
+            {
+                "name": "Bayesian Bicep Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/baysianbicepcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/bayesianbicepcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/bayesianbicepcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/bayesianbicepcurl.png"
+            },
+            {
+                "name": "Lying Cable Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/lyingcablecurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/lyingcablecurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/lyingcablecurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/lyingcablecurl.png"
+            },
+            {
+                "name": "EZ Bar Seated Close Grip Concentration Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/ezbarseatedclosegripconcentrationcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/ezbarseatedclosegripconcentrationcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/ezbarseatedclosegripconcentrationcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/ezbarseatedclosegripconcentrationcurl.png"
+            }
+        ],
+        "imagePath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/MALE/BICEPS_M_NEW.png",
+        "isBodyWeight": false,
+        "isMuscleGroup": true,
+        "imagepath_female": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/FEMALE/BICEPS_F.png"
+    },
+    "Cardio": {
+        "isCardio": true,
+        "exercises": [
+            {
+                "name": "Jogging In Place",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/jagginginplace.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/jagginginplace.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/jagginginplace.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/jagginginplace.png"
+            },
+            {
+                "name": "Jumping Jacks",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/jumpingjacks.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/jumpingjacks.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/jumpingjacks.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/jumpingjacks.png"
+            },
+            {
+                "name": "Squat To Front Kick",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/squattofrontkicks.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/squattofrontkick.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/squattofrontkick.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/squattofrontkick.png"
+            },
+            {
+                "name": "Jump Rope",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/jumpropes.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/jumprope.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/jumprope.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/jumprope.png"
+            },
+            {
+                "name": "Screamer Lunges",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/screamerlunges.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/screamerlunges.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/screamerlunges.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/screamerlunges.png"
+            },
+            {
+                "name": "Bear Crawl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/bearcrawl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/bearcrowl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/bearcrowl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/bearcrowl.png"
+            },
+            {
+                "name": "High Knees",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/highknees.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/highknees.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/highknees.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/highknees.png"
+            },
+            {
+                "name": "Mountain Climbers",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/mauntainclimbers.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/mauntainclimbers.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/mauntainclimbers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/mauntainclimbers.png"
+            },
+            {
+                "name": "Jump Squats",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/jumpsquats.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/jumpsquats.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/jumpsquats.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/jumpsquats.png"
+            },
+            {
+                "name": "Plyometric Pushups",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/polymetricpushups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/plyometricpushups.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/polymetricpushup.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/plyometricpushups.png"
+            },
+            {
+                "name": "Jumping Lunges",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/jumpinglunges.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/jumplinglunges.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/jumpinglunges.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/jumplinglunge.png"
+            },
+            {
+                "name": "Skater Jumps",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/skaterjumps.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/skaterjumps.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/skaterjumps.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/skaterjumps.png"
+            },
+            {
+                "name": "Plank Jacks",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/plankjacks.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/plankjacks.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/plankjacks.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/plankjacks.png"
+            },
+            {
+                "name": "Tuck Jumps",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/tuckjumps.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/tuckjump.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/tuckjump.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/tuckjump.png"
+            },
+            {
+                "name": "Box Jumps",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/boxjumps.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/boxjump.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/boxjump.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/boxjump.png"
+            },
+            {
+                "name": "Battle Ropes",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/battleropes.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/battleropes.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/battleropes.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/battleropes.png"
+            },
+            {
+                "name": "Kettlebell Swings",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/kettlebellswing.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/kattlebellswings.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/kattlebellswings.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/kattlebellswings.png"
+            },
+            {
+                "name": "Agility Ladder Drills",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/agilityladders.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/agilityladderdrills.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/agilityladderdrills.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/agilityladderdrills.png"
+            }
+        ],
+        "imagePath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/MALE/CARDIO_M_NEW.png",
+        "isBodyWeight": false,
+        "isMuscleGroup": false,
+        "imagepath_female": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/FEMALE/CARDIO_F.png"
+    },
+    "Cycling": {
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Recumbent Bike",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/recumbentbike.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/exercises/RECUMBENT+BIKEold.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/recumbentbike.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/workout_pic_female/Recumbent+Bikeold.png"
+            },
+            {
+                "name": "Spin Bike",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/spinbike.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/exercises/SPIN+BIKEold.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/spinbike.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/workout_pic_female/Spin+Bikeold.png"
+            },
+            {
+                "name": "Upright Bike",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/uprightbike.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/exercises/UPRIGHT+BIKEold.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/uprightbike.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/workout_pic_female/Upright+bikeold.png"
+            }
+        ],
+        "imagePath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/MALE/CYCLING_M.png",
+        "isBodyWeight": false,
+        "isMuscleGroup": false,
+        "imagepath_female": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/FEMALE/CYCLING_F.png"
+    },
+    "Triceps": {
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Single-Arm Overhead Triceps Extension",
+                "gifPath": "https.com/img_male/singlearmoverheadtricepsextension.png",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/singlearmovrhead.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/singlearmoverheaddumbellextension.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/singlearmoverhead.png"
+            },
+            {
+                "name": "Dumbbell Kickbacks",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellkickbacks.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellkickback.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellkickback.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellkickback.png"
+            },
+            {
+                "name": "Close Grip Dumbbell Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/closegripdumbbellpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/closegripdumbellprss.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/closegripdumbellpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/closegripdumbellprss.png"
+            },
+            {
+                "name": "Barbell Skull Crushers",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellskullcrushers.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellskullcrusher.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellskullcrushers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellskullcrusher.png"
+            },
+            {
+                "name": "Cable Triceps Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cablebicepcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cabletricepscurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cabletricepcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cabletricepscurl.png"
+            },
+            {
+                "name": "Dumbbell One Arm Bench",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellonearmbench.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellonearmbench.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellonearmbench.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellonearmbench.png"
+            },
+            {
+                "name": "Dumbbell Seated Bench Extension",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellseatedbenchextention.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellseatedbenchextension.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellseatedbenchextension.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellseatedbenchextension.png"
+            },
+            {
+                "name": "Dumbbell Lying One Arm",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbelllyingonearm.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbelllyingonearm.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbelllyingonearm.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbelllyingonearm.png"
+            },
+            {
+                "name": "Alternating Dumbbell Lying Tricep Extension",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/alternatingdumbbelllyingtricepextention.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/alternatingdumbelllyingtricepextension.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/alternatingdumbelllyingtricepextension.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/alternatingdumbelllyingtricepextension.png"
+            },
+            {
+                "name": "Dumbbell Standing Kickback",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellstandingkickbacks.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellstandingkickback.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellstandingkickback.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellstandingkickback.png"
+            },
+            {
+                "name": "Tricep Dip Machine",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/tricepdipmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/tricepdipmachine.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/tricepdipmachine.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/tricepdipmachine.png"
+            },
+            {
+                "name": "Rope Tricep Extension",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/ropetricepextention.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/ropetricepextension.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/ropetricepextension.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/ropetricepextension.png"
+            },
+            {
+                "name": "Cable Rope Overhead Tricep Extension",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cableropeoverheadtricepextention.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cableropeoverheadtricepextension.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cableropeoverheadtricepextension.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cableropeoverheadtricepextension.png"
+            },
+            {
+                "name": "Weighted Bench Dip",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/weightbenchdips.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/weightedbenchdip.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/weightedbenchdip.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/weightedbenchdip.png"
+            },
+            {
+                "name": "Lying Triceps Extension",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/lyingtricepextention.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/lyingtricepsextension.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/lyingtricepsextension.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/lyingtricepsextension.png"
+            },
+            {
+                "name": "Kettlebell Single Arm Overhead Extension",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/kettlebellsinglearmoverheadextention.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/kattlebellsinglearmoverheadextension.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/kattlebellsinglearmoverheadextension.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/singlearmoverhead.png"
+            }
+        ],
+        "imagePath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/MALE/TRICEPS_M_NEW.png",
+        "isBodyWeight": false,
+        "isMuscleGroup": true,
+        "imagepath_female": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/FEMALE/TRICEPS_F.png"
+    },
+    "Forearms": {
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Band Wrist Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/bandwristcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/bandwristcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/bandwristcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/bandwristcurl.png"
+            },
+            {
+                "name": "Barbell Reverse Wrist Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellreversewristcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellreversewristcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellreversewristcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellreversewristcurl.png"
+            },
+            {
+                "name": "Dumbbell One Arm Wrist Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellonearmwristcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellonearmwristcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellonearmwristcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellonearmwristcurl.png"
+            },
+            {
+                "name": "Smith Standing Back Wrist Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/smithstandingbackwristcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/smithstandingbackwristcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/smithstandingbackwristcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/smithstandingbackwristcurl.png"
+            },
+            {
+                "name": "Barbell Standing Back Wrist Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellstandingbackwristcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellstandingbackwristcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellstandingbackwristcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellstandingbackwristcurl.png"
+            },
+            {
+                "name": "Wrist Roller",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/wristrollers.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/wristroller.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/wristroller.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/wristroller.png"
+            },
+            {
+                "name": "Barbell Wrist Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellwristcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellwristcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellwristcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellwristcurl.png"
+            },
+            {
+                "name": "EZ Barbell Reverse Grip Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/ezbarbellreversegripcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/ezbarbellreversegripcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/ezbarbellreversegripcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/ezbarbellreversegripcurl.png"
+            },
+            {
+                "name": "Over Bench One Arm Reverse Wrist Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/overbenchonearmreversewristcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/overbenchonearmreversewristcurl.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/overbenchonearmreversewristcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/overbenchonearmreversewristcurl.png"
+            }
+        ],
+        "imagePath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/MALE/FOREARM_M_NEW.png",
+        "isBodyWeight": false,
+        "isMuscleGroup": true,
+        "imagepath_female": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/FEMALE/FOREARM_F.png"
+    },
+    "Shoulder": {
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Lateral Raise",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/lateralraises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/lateralrise.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/lateralrise.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/lateralrise.png"
+            },
+            {
+                "name": "Front Raise",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/frontraises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/frontrise.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/frontrises.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/frontrise.png"
+            },
+            {
+                "name": "Bent Over Rear Delt Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/bentoverreardealtflyes.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/bentoverreardeltfly.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/bentoverreardealtfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/bentoverreardeltfly.png"
+            },
+            {
+                "name": "Seated Arnold Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/seatedarnoldpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/seatedarnoldpress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/seatedarnoldpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/seatedarnoldpress.png"
+            },
+            {
+                "name": "Seated Dumbbell Lateral Raise",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/seateddumbelllateralrise.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/seateddumbelllateralrise.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/seateddumbelllateralrise.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/seateddumbelllateralrise.png"
+            },
+            {
+                "name": "Barbell Overhead Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbelloverheadpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbelloverheadpress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbelloverheadpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbelloverheadpress.png"
+            },
+            {
+                "name": "Barbell Upright Row",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbelluprightrows.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbelluprightrow.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbelluprightrows.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbelluprightrow.png"
+            },
+            {
+                "name": "Shoulder Smith Machine Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/shouldersmithmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/shouldersmithmachinepress.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/shouldersmithmachinepress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/shouldersmithmachinepress.png"
+            }
+        ],
+        "imagePath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/MALE/SHOULDERS_M_NEW.png",
+        "isBodyWeight": false,
+        "isMuscleGroup": true,
+        "imagepath_female": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/FEMALE/SHOULDERS_F.png"
+    },
+    "Treadmill": {
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Treadmill",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/treadmillrun.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/exercises/TREDMILLold.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/treadmillrun.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/workout_pic_female/Treadmillold.png"
+            }
+        ],
+        "imagePath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/MALE/TREADMILL_M_NEW.png",
+        "isBodyWeight": false,
+        "isMuscleGroup": false,
+        "imagepath_female": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/muscle_group/FEMALE/TREADMILL_F.png"
+    }
+}

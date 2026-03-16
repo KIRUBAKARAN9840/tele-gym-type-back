@@ -1,0 +1,182 @@
+# app/tasks/image_scanner_tasks.py
+"""
+Celery tasks for AI food image scanning
+Production-ready with error handling and progress updates
+"""
+import json
+import base64
+import logging
+from typing import List, Dict, Any
+from celery import current_task
+from app.celery_app import celery_app
+from app.utils.openai_pool import get_openai_client
+from app.utils.redis_config import get_redis_sync
+from app.models.database import get_db_sync
+
+# Production logging configuration
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] [%(name)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+
+def publish_progress(task_id: str, data: dict):
+    """Publish progress to Redis pub/sub for SSE streaming"""
+    try:
+        redis_client = get_redis_sync()
+        redis_client.publish(
+            f"task:{task_id}",
+            json.dumps(data)
+        )
+        logger.debug(f"Task {task_id}: Published progress - {data.get('status')} ({data.get('progress', 0)}%)")
+    except Exception as e:
+        logger.error(f"Task {task_id}: Failed to publish progress - {e}")
+
+
+@celery_app.task(bind=True, name="app.tasks.image_scanner_tasks.analyze_food_image")
+def analyze_food_image(
+    self,
+    user_id: int,
+    image_data_list: List[str],  # Base64 encoded images
+    food_scan: bool = True
+):
+    """
+    Analyze food images with GPT-4 Vision
+
+    Args:
+        user_id: Client ID
+        image_data_list: List of base64 encoded images
+        food_scan: Whether to perform food scanning
+
+    Returns:
+        dict: Analysis results with food items and nutrition
+    """
+    task_id = self.request.id
+
+    try:
+        # Progress: Starting
+        publish_progress(task_id, {
+            "status": "progress",
+            "progress": 10,
+            "message": f"Analyzing {len(image_data_list)} image(s)..."
+        })
+
+        # Import your existing food scanner logic
+        from app.fittbot_api.v1.client.client_api.food_scanner_AI.ai_food_scanner import (
+            analyze_images_with_gpt4_vision,
+            process_gpt4_vision_response,
+            enrich_items_with_nutrition,
+        )
+
+        logger.info(f"Task {task_id}: Starting image analysis for user {user_id} ({len(image_data_list)} images)")
+
+        # Step 1: Analyze images with GPT-4 Vision
+        publish_progress(task_id, {
+            "status": "progress",
+            "progress": 30,
+            "message": "Identifying food items..."
+        })
+
+        oai_client = get_openai_client()  # Get client from pool
+
+        # Run async function in sync context
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        # Analyze with Vision API
+        vision_response = loop.run_until_complete(
+            analyze_images_with_gpt4_vision(oai_client, image_data_list, food_scan)
+        )
+
+        logger.debug(f"Task {task_id}: Vision API response received")
+
+        # Step 2: Process Vision response
+        publish_progress(task_id, {
+            "status": "progress",
+            "progress": 50,
+            "message": "Processing food items..."
+        })
+
+        items = process_gpt4_vision_response(vision_response, food_scan)
+
+        if not items:
+            raise ValueError("No food items identified in images")
+
+        logger.info(f"Task {task_id}: Identified {len(items)} food items from images")
+
+        # Step 3: Enrich with nutrition data
+        publish_progress(task_id, {
+            "status": "progress",
+            "progress": 70,
+            "message": "Calculating nutrition data..."
+        })
+
+        # Enrich items with nutrition using API key pool
+        enriched_items = []
+        for item in items:
+            oai_client = get_openai_client()  # Rotate API keys
+            enriched = loop.run_until_complete(
+                enrich_items_with_nutrition(oai_client, [item])
+            )
+            enriched_items.extend(enriched)
+
+        logger.debug(f"Task {task_id}: Nutrition data enriched for {len(enriched_items)} items")
+
+        # Step 4: Calculate totals
+        publish_progress(task_id, {
+            "status": "progress",
+            "progress": 90,
+            "message": "Finalizing results..."
+        })
+
+        total_calories = sum(item.get("calories", 0) or 0 for item in enriched_items)
+        total_protein = sum(item.get("protein", 0) or 0 for item in enriched_items)
+        total_carbs = sum(item.get("carbs", 0) or 0 for item in enriched_items)
+        total_fat = sum(item.get("fat", 0) or 0 for item in enriched_items)
+
+        loop.close()
+
+        result = {
+            "status": "completed",
+            "progress": 100,
+            "result": {
+                "success": True,
+                "items": enriched_items,
+                "total_items": len(enriched_items),
+                "totals": {
+                    "calories": round(total_calories, 1),
+                    "protein": round(total_protein, 1),
+                    "carbs": round(total_carbs, 1),
+                    "fat": round(total_fat, 1)
+                },
+                "message": f"✅ Identified {len(enriched_items)} food items"
+            }
+        }
+
+        # Publish completion
+        publish_progress(task_id, result)
+
+        logger.info(f"Task {task_id}: Image analysis completed successfully for user {user_id} - {len(enriched_items)} items identified")
+        return result["result"]
+
+    except Exception as e:
+        logger.error(f"Task {task_id}: Image analysis failed for user {user_id} - {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+
+        # Publish error
+        error_result = {
+            "status": "error",
+            "progress": 0,
+            "result": {
+                "success": False,
+                "error": str(e),
+                "message": f"Failed to analyze images: {str(e)}"
+            }
+        }
+        publish_progress(task_id, error_result)
+
+        raise  # Re-raise for Celery retry

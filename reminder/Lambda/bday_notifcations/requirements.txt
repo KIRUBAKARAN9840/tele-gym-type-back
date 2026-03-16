@@ -1,0 +1,3 @@
+SQLAlchemy==2.0.29
+PyMySQL==1.1.0
+boto3==1.34.119

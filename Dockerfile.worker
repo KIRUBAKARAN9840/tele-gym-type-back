@@ -1,0 +1,39 @@
+#########################
+# Dockerfile.worker
+# For Celery workers (same code, different entry point)
+#########################
+FROM python:3.12-slim AS builder
+WORKDIR /app
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential tzdata && \
+    apt-get upgrade -y --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+# Install deps system-wide so they end up in /usr/local
+RUN pip install --no-cache-dir -r requirements.txt
+
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# tzdata + security updates (fixes libexpat CVE, etc.)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends tzdata && \
+    ln -snf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime && \
+    echo "Asia/Kolkata" > /etc/timezone && \
+    apt-get upgrade -y --no-install-recommends && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=Asia/Kolkata
+
+# bring in the packages installed by the builder stage
+COPY --from=builder /usr/local /usr/local
+
+COPY . /app
+
+# Run Celery worker instead of uvicorn
+# -Q flag includes all payment queues + default celery queue for AI tasks
+CMD ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--concurrency=4", \
+     "-Q", "celery,payments.razorpay.process_checkout,payments.razorpay.process_verify,payments.razorpay.process_webhook,payments.revenuecat.process_order,payments.revenuecat.process_verify,payments.revenuecat.process_webhook,payments.dailypass.process_checkout,payments.dailypass.process_verify,payments.dailypass.process_upgrade_checkout,payments.dailypass.process_upgrade_verify,payments.gym_membership.process_checkout,payments.gym_membership.process_verify,payments.gym_membership.process_webhook"]

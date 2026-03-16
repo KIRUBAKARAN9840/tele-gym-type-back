@@ -1,0 +1,1578 @@
+{
+    "Rods": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/rods.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Barbell Bent Over Row",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellbentoverrows.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellbentoverrow.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellbentoverrow.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellbentoverrow.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Deadlift",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbelldeadlifts.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbelldeadlift.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbelldeadlift.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbelldeadlift.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Shrugs",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellshrugs.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellshrugs.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellshrug.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellshrugs.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Landmine Rotation",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbelllandminerotation.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbelllandminerotation.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "Core",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbelllandminerotation.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbelllandminerotation.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Rollout",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellrollout.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellrollout.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "Core",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellrollout.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellrollout.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Back Squat",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellbacksquats.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellbacksquat.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Legs",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellbacksquats.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellbacksquat.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Lunge",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbelllunges.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbelllunge.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Legs",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbelllunges.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbelllunge.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Front Squat",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellfrontsquats.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellfrontsquat.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Legs",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellfrontsquats.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellfrontsquat.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellbicepcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Reverse Barbell Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/reversebarbellcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/reversebarbellcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/reversebarbellcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/reversebarbellcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Preacher Curl Barbell",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/preachercurlbarbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/preachercurlbarbell.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/preachercurlbarbell.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/preachercurlbarbell.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "EZ Barbell Bicep Curl Close Grip",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/ezbarbellcurlclosegrip.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/ezbarbellbicepcurlclosegrip.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/ezbarbellbicepcurlclosegrip.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/ezbarbellbicepcurlclosegrip.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Curl Close Grip",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellcurlclosegrip.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellcurlclosegrip.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellcurlclosegrip.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellcurlclosegrip.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Reverse Curl EZ",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellreversecurlez.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellreversecurlez.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellreversecurlez.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellreversecurlez.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Reverse Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellreversecurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellreversecurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellreversecurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellreversecurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "EZ Bar Seated Close Grip Concentration Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/ezbarseatedclosegripconcentrationcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/ezbarseatedclosegripconcentrationcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/ezbarseatedclosegripconcentrationcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/ezbarseatedclosegripconcentrationcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Skull Crushers",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellskullcrushers.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellskullcrusher.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Triceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellskullcrushers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellskullcrusher.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Overhead Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbelloverheadpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbelloverheadpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Shoulder",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbelloverheadpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbelloverheadpress.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Upright Row",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbelluprightrows.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbelluprightrow.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Shoulder",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbelluprightrows.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbelluprightrow.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Decline Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinedbenchbarbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declinebarbellchestpressmachine.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/declinebenchbarbellpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/declinebarbellchestpressmachine.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Flat Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatbarbellchestpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellflatbenchpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellflatbenchpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellflatbenchpress.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Incline Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinedbenchbarbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/machinechestpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinebenchbarbellpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellinclinebenchpress.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Reverse Wrist Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellreversewristcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellreversewristcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Forearms",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellreversewristcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellreversewristcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Standing Back Wrist Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellstandingbackwristcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellstandingbackwristcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Forearms",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellstandingbackwristcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellstandingbackwristcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Wrist Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/barbellwristcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/barbellwristcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Forearms",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellwristcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellwristcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Decline Barbell Chest Press-Machine",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinebarbellchestpressmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declinebarbellchestpressmachine.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/declinebarbellchestpressmachine.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/declinebarbellchestpressmachine.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "EZ Barbell Reverse Grip Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/ezbarbellreversegripcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/ezbarbellreversegripcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Forearms",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/ezbarbellreversegripcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/ezbarbellreversegripcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Flat Barbell Chest Press-Machine",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatbarbellchestpressmahine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/machinechestpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/flatbarbellchestpressmachine.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatbarbellmachinechestpress.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": true,
+        "isMuscleGroup": true
+    },
+    "Ropes": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/ropes.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Battle Ropes",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/battleropes.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/battleropes.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/battleropes.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/battleropes.png"
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": true
+    },
+    "Pec Fly": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/pecfly.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Chest Pec Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/chestpecfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/chestpecfly.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/chestpecfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/chestpecfly.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": true
+    },
+    "V Squat": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/vsquat.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Machine V-Squat Leg Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/machinevsquatlegpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/machinevsquatlegpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Legs",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/machinevsquatlegpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/machinevsquatlegpress.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": true
+    },
+    "Leg Press": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/legpress.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Machine Leg Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/machinelegpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/machinelegpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Legs",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/machinelegpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/machinelegpress.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": true
+    },
+    "Spin Bike": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/spinbike.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Spin Bike",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/spinbike.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/spinbike.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Cycling",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/spinbike.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/spinbike.png",
+                "isMuscleGroup": false
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": false
+    },
+    "Treadmill": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/treadmill.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Treadmill",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/treadmillrun.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/treadmill.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Treadmill",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/treadmillrun.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/treadmill.png",
+                "isMuscleGroup": false
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": false
+    },
+    "Wrist Curl": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/wristcurl.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Wrist Curl Machine",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/wristcurlmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/wristcurlmachine.png",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/wristcurlmachine.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/wristcurlmachine.png"
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": true
+    },
+    "Chest Press": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/chestpress.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Machine Chest Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/mkachinechestpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/machinechestpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/machinechestpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatbarbellmachinechestpress.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Decline Barbell Chest Press-Machine",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinebarbellchestpressmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declinebarbellchestpressmachine.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/declinebarbellchestpressmachine.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/declinebarbellchestpressmachine.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Flat Barbell Chest Press-Machine",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatbarbellchestpressmahine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/machinechestpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/flatbarbellchestpressmachine.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatbarbellmachinechestpress.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": true
+    },
+    "Seated Calf": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/seatedcalf.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Seated Calf Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/seatedcalfraises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/seatedcalfrises.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Legs",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/seatedcalfrise.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/seatedcalfrises.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Calf Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/calfrises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/calfrise.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Legs",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/calfrise.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/calfrises.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": true
+    },
+    "Lat Pulldown": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/latpulldown.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Wide Grip Lat Pulldown",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/widegriplatpulldown.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/widegriplatpulldown.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/widegriplatpulldown.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/widegriplatpulldown.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Close Grip Lat Pulldown",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/closegriplatpulldown.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/closegriplatpulldown.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/closegriplatpulldown.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/closegriplatpulldown.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Behind The Neck Lat Pulldown",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/behindnecklatpulldown.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/behindthenecklatpulldown.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/behindnecklatpulldown.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/behindthenecklatpulldown.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Reverse Grip Lat Pulldown",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/reversegriplatpulldown.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/reversegriplatpulldown.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/reversegriplatpulldown.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/reversegriplatpulldown.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": true
+    },
+    "Static Bench": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/staticbench.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Flat Bench Situps",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatbenchsitups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flatbenchsitups.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "ABS",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/flatbenchsitups.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatbenchsitups.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Incline Bench Situps",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinebenchsitups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/inclinebenchsitups.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "ABS",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinebenchsitups.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/inclinebenchsitups.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Incline Twisting Sit-Up",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinetwistingsitups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/inclinetwistingsitup.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "ABS",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinetwistingsitup.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/inclinetwistingsitup.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Bench Oblique Crunch",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/benchobliquecrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/benchobliquecrunch.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "ABS",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/benchobliquecrunch.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/benchobliquecrunch.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Lying Flat Bench Knee Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/lyingflatbenchkneerises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/lyingflatbenchkneeraises.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "ABS",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/lyingflatbenchkneeraises.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/lyingflatbenchkneeraises.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Bench Leg Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/benchlegrises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/benchlegrises.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "Core",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/benchlegrises.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/benchlegrises.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Decline Leg Raises",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinelegrises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declinelegrises.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "Core",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/declinelegrises.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/declinelegrises.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Seated Bench Leg Raise",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/seatedlegrises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/seatedbenchlegrise.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "Core",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/seatedbenchlegrises.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/seatedbenchlegrise.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Step Ups",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/stepups.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/stepups.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Legs",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/stepups.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/stepups.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Weighted Bench Dip",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/weightbenchdips.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/weightedbenchdip.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Triceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/weightedbenchdip.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/weightedbenchdip.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": true,
+        "isMuscleGroup": true
+    },
+    "Upright Bike": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/uprightbike.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Upright Bike",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/uprightbike.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/uprightbike.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Cycling",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/uprightbike.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/uprightbike.png",
+                "isMuscleGroup": false
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": false
+    },
+    "Smith Machine": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/smithmachine.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Smith Machine Bent Over Row",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/bentoversmithmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/smithmachinebentoverrow.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/smithmachinebentoverrows.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/smithmachinebentoverrow.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Smith Machine Squats",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/squatsmithmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/smithmachinesquat.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Legs",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/smithmachinesquats.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/smithmachinesquat.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Smith Standing Back Wrist Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/smithstandingbackwristcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/smithstandingbackwristcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Forearms",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/smithstandingbackwristcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/smithstandingbackwristcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Shoulder Smith Machine Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/shouldersmithmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/shouldersmithmachinepress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Shoulder",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/shouldersmithmachinepress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/shouldersmithmachinepress.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": true
+    },
+    "Stair Climber": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/stairclimber.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Stair Climber",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/stairclimber.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/stairclimber.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Treadmill",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/stairclimber.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/stairclimber.png",
+                "isMuscleGroup": false
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": false
+    },
+    "Recumbent Bike": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/recumbentbike.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Recumbent Bike",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/recumbentbike.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/recumbentbike.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Cycling",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/recumbentbike.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/recumbentbike.png",
+                "isMuscleGroup": false
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": false
+    },
+    "Cable Crossover": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/cablecrossover.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Weighted Cable Seated Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/weightedcableseatedcrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/weightedcableseatedcrunches.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "ABS",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/weightedcableseatedcrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/weightedcableseatedcrunches.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Seated Ab Crunch",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/seatedabscrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/seatedabscrunches.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "ABS",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/seatedabcrunch.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/seatedabscrunches.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Cable Crunches",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cablecrunches.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cablecrunches.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "ABS",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cablecrunches.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cablecrunches.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Abs Crunches Machine",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/abscrunchmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/abscrunchesmachine.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "ABS",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/abscrunchmachine.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/abscrunchesmachine.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Seated Row Cable",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/seatedcablerows.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/seatedrowcable.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/seatedcablerows.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/seatedrowcable.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Lat Cable Pullovers",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/latcablepullover.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/latcablepullovers.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "Core",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/latcablepullovers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/latcablepullovers.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Lat Cable Pullovers",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/latcablepullover.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/latcablepullovers.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "Core",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/latcablepullovers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/latcablepullovers.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Cable Flyover",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cableflyovers.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cableflyover.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cableflyovers.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cableflyover.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Kneeling Cable Chest Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/kneelingcablechestfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/kneelingcablechestfly.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/kneelingcablechestfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/kneelingcablechestfly.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Cable Low Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cablelowfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cablelowfly.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cablelowfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cablelowfly.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Incline Cable Chest Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinecablechestfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/inclinecablechestfly.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinecablechestfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/inclinecablechestfly.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Flat Cable Chest Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatcablechestfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flatcablechestfly.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/flatcablechestfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatcablechestfly.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Decline Cable Chest Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinecablechestfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declinecablechestfly.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/declinecablechestfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/declinecablechestfly.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Single Arm Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/singlearmfly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/singlearmfly.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/singlearmfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/singlearmfly.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "High To Low Cable Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/hightolowcablefly.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/hightolowcablefly.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/hightolowcablefly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/hightolowcablefly.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Cable Biceps Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cablebicepcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cablebicepcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cablebicepcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cablebicepscurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Cable Hammer Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cablehammercurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cablehummercurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cablehammercurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cablehummercurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "High Cable Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/highcablecurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/highcablecurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/highcablecurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/highcablecurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Lever Bicep Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/leverbicepcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/leverbicepcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/leverbicepcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/leverbicepcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Cable Incline Bicep Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cableinclinebicepcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cableinclinebicepcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cableinclinebicepcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cableinclinebicepcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Bayesian Bicep Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/baysianbicepcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/bayesianbicepcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/bayesianbicepcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/bayesianbicepcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Lying Cable Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/lyingcablecurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/lyingcablecurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/lyingcablecurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/lyingcablecurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Cable Triceps Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/cabletricepcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/cabletricepscurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Triceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/cabletricepcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/cabletricepscurl.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": true,
+        "isMuscleGroup": true
+    },
+    "Curve Treadmill": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/curvetreadmill.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Curve Treadmill",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/curvetreadmill.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/curvetreadmill.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Treadmill",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/curvetreadmill.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/curvetreadmill.png",
+                "isMuscleGroup": false
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": false
+    },
+    "Chest Dip Machine": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/chestdip.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Chest Dips",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/chestdips.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/chestdips.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/chestdips.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/chestdips.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Tricep Dip Machine",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/tricepdipmachine.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/tricepdipmachine.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Triceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/tricepdipmachine.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/tricepdipmachine.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": true
+    },
+    "Dumbbell Exercises": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/dumbbellexercises.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Dumbbell Russian Twist",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellrussiantwist.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellrussiantwist.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "ABS",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellrussiantwist.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellrussiantwist.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Bent Over Row",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbellbentoverrow.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellbentoverrow.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellbentoverrow.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellbentoverrow.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Renegade Rows",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/renegaderows.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/renegaderow.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/renegaderows.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/renegaderow.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Deadlift",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbelldeadlift.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbelldeadlift.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbelldeadlift.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbelldeadlift.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "One Arm Dumbbell Row",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/onearmdumbbellrows.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/onearmdumbellrow.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Back",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/onearmdumbbellrows.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/onearmdumbellrow.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Russian Twist",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellrussiantwist.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellrussiantwist.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "ABS",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellrussiantwist.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellrussiantwist.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Side Bend",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbellsidebend.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellsidebend.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "Core",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbbellsidebends.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellsidebend.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Weighted Single Leg Bridge",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/weightedsinglelegbridge.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/weightedsinglelegbridge.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "Core",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/weightedsinglelegbridge.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/weightedsinglelegbridge.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Pullover",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellpullover.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellpullover.png",
+                "isCardio": false,
+                "isBodyWeight": true,
+                "muscle_group": "Core",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellpullover.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellpullover.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Squats",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellsquats.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellsquats.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Legs",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellsquat.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellsquats.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Lunges",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbelllunges.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbelllunges.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Legs",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbelllunges.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbelllunges.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Calf Raise",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbellcalfrise.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellcalfrise.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Legs",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellcalfrise.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellcalfrise.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Flat Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatdumbbellchestpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flatdumbellchestpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellflatbenchpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellflatbenchpress.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Incline Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinedbenchdumbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/inclinedumbellpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinebenchdumbellpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellinclinebenchpress.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Decline Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinedbenchdumbbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declinebenchpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/declinebenchdumbellpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbelldeclinebenchpress.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Flat Flyes",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatbenchdumbbellflyes.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/flatdumbellfly.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/flatbenchfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatflybench.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Decline Flyes",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinedbenchdumbbellflyes.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declineflybenchdumbell.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbelldeclinedflyes.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbelldeclinefly.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Hammer Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/hammercurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/hammercurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/hammercurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/hammercurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Concentration Curls",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/concentrationcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/concentrationcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/concentrationcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/concentrationcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Incline Dumbbell Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinedumbellcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/inclinedumbellcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinedumbellcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/inclinedumbellcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Preacher Curl Dumbbell",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/preachercurldumbbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/preachercurldumbell.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/preachercurldumbell.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/preachercurldumbell.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Preacher Curl One Hand",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/preachercurlonehand.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/preachercurlonehand.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/preachercurlonehand.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/preachercurlonehand.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Reverse Dumbbell Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/reversedumbbellcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/reversedumbellcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/reversedumbellcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/reversedumbellcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell High Curl",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellhighcurl.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellhighcurl.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Biceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellhighcurl.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellhighcurl.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Single-Arm Overhead Triceps Extension",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/singlearmoverheadtricepsextension.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/singlearmovrhead.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Triceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/singlearmoverheaddumbellextension.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/singlearmoverhead.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Kickbacks",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellkickbacks.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellkickback.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Triceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellkickback.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellkickback.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Close Grip Dumbbell Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/closegripdumbbellpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/closegripdumbellprss.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Triceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/closegripdumbellpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/closegripdumbellprss.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell One Arm Bench",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellonearmbench.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellonearmbench.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Triceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellonearmbench.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellonearmbench.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Seated Bench Extension",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellseatedbenchextention.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellseatedbenchextension.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Triceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellseatedbenchextension.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellseatedbenchextension.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Lying One Arm",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbelllyingonearm.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbelllyingonearm.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Triceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbelllyingonearm.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbelllyingonearm.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Alternating Dumbbell Lying Tricep Extension",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/alternatingdumbbelllyingtricepextention.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/alternatingdumbelllyingtricepextension.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Triceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/alternatingdumbelllyingtricepextension.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/alternatingdumbelllyingtricepextension.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Dumbbell Standing Kickback",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/dumbbellstandingkickbacks.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/dumbellstandingkickback.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Triceps",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/dumbellstandingkickback.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/dumbellstandingkickback.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Lateral Raise",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/lateralraises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/lateralraise.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Shoulder",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/lateralrise.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/lateralraise.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Front Raise",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/frontraises.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/frontrise.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Shoulder",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/frontrises.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/frontrise.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Bent Over Rear Delt Fly",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/bentoverreardealtflyes.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/bentoverreardeltfly.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Shoulder",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/bentoverreardealtfly.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/bentoverreardeltfly.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Seated Arnold Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/seatedarnoldpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/seatedarnoldpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Shoulder",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/seatedarnoldpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/seatedarnoldpress.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Seated Dumbbell Lateral Raise",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/seateddumbelllateralrise.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/seateddumbelllateralrise.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Shoulder",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/seateddumbelllateralrise.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/seateddumbelllateralrise.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": true,
+        "isMuscleGroup": true
+    },
+    "Elliptical Trainer": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/ellipticaltrainer.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Elliptical Trainer",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/ellipticaltrainer.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/ellipticaltrainer.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Treadmill",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/ellipticaltrainer.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/ellipticaltrainer.png",
+                "isMuscleGroup": false
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": false
+    },
+    "Barbell Chest Press": {
+        "image": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/equipment/barbellchestpress.png",
+        "isCardio": false,
+        "exercises": [
+            {
+                "name": "Barbell Flat Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/flatbarbellchestpress.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/machinechestpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/barbellflatbenchpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/flatbarbellmachinechestpress.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Incline Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/inclinedbenchbarbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/machinechestpress.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/inclinebenchbarbellpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/barbellinclinebenchpress.png",
+                "isMuscleGroup": true
+            },
+            {
+                "name": "Barbell Decline Bench Press",
+                "gifPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_male/declinedbenchbarbell.gif",
+                "imgPath": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_male/declinebarbellchestpressmachine.png",
+                "isCardio": false,
+                "isBodyWeight": false,
+                "muscle_group": "Chest",
+                "gifPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/gif_female/declinebenchbarbellpress.gif",
+                "imgPathFemale": "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/img_female/declinebarbellchestpressmachine.png",
+                "isMuscleGroup": true
+            }
+        ],
+        "isBodyWeight": false,
+        "isMuscleGroup": true
+    }
+}

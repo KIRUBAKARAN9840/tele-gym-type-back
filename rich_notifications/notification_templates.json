@@ -1,0 +1,90 @@
+{
+  "dailypass": {
+    "images": [
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_1.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_2.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_3.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_4.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_5.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_6.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_7.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_8.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_9.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_10.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_11.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_12.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_13.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_14.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_15.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_16.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_17.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_18.png",
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/new_dailypass_19.png"
+    ],
+
+    "templates": [
+      {
+        "title": "Your first Gym Day starts at Rs.49",
+        "body": "Hey {{name}}, no membership needed. DailyPass at Rs.49 — any gym, any day!"
+      },
+      {
+        "title": "What does a Real Gym Session feel like?",
+        "body": "{{name}}, try a real gym session today. DailyPass Rs.49, Sessions Rs.99. Zero commitment!"
+      },
+      {
+        "title": "Skip the Commitment, not the Workout",
+        "body": "{{name}}, no contracts. Just Rs.49 for a full gym day. Book a DailyPass now!"
+      },
+      {
+        "title": "Rs.49 = 1 Coffee = 1 Full Gym Day",
+        "body": "{{name}}, Rs.49 — cheaper than coffee, better for your body. Try a DailyPass today!"
+      },
+      {
+        "title": "Train like a Pro for just Rs.99",
+        "body": "{{name}}, guided PT Session at Rs.99 or solo DailyPass at Rs.49. Your call!"
+      },
+      {
+        "title": "Try any Gym near You. Today.",
+        "body": "Hey {{name}}, access any gym near you. No sign-ups, just Rs.49 DailyPass!"
+      },
+      {
+        "title": "Your Body will Thank You Tomorrow",
+        "body": "{{name}}, one session changes everything. DailyPass Rs.49 | Sessions Rs.99!"
+      }
+    ]
+  },
+  "rewards": {
+    "images": [
+      "https://fittbot-uploads.s3.ap-south-2.amazonaws.com/Notifications/WhatsApp+Image+2026-02-10+at+11.44.29.jpeg"],
+    "templates": [
+      {
+        "title": "Win an iPhone 17 Pro Max!",
+        "body": "{{name}}, book a DailyPass or Session and win an iPhone 17 Pro Max!"
+      },
+      {
+        "title": "1st Prize: iPhone 17 Pro Max!",
+        "body": "Hey {{name}}, Grand Rewards LIVE! Win iPhone 17 Pro Max or AirPods!"
+      },
+      {
+        "title": "Book once. Win big.",
+        "body": "{{name}}, one DailyPass at Rs.49 = a shot at iPhone 17 Pro Max!"
+      },
+      {
+        "title": "Grand Rewards are LIVE!",
+        "body": "{{name}}, every booking = one entry. Win iPhone 17 or AirPods!"
+      },
+      {
+        "title": "Rs.49 could win you an iPhone 17 Pro Max",
+        "body": "Hey {{name}}, Rs.49 DailyPass could win you an iPhone 17 Pro Max!"
+      },
+      {
+        "title": "iPhone 17 for the winner, AirPods for runners-up!",
+        "body": "{{name}}, Grand Rewards are here! Every booking = a chance to win big!"
+      },
+      {
+        "title": "Don't miss the Mega Giveaway!",
+        "body": "{{name}}, win iPhone 17 Pro Max or AirPods! DailyPass at Rs.49 to enter!"
+      }
+    ]
+  }
+}

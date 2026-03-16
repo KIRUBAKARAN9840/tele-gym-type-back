@@ -1,0 +1,28 @@
+{
+  "_comment": "Field coordinates for Gym Agreement Form v1. Y values are from TOP (image coords). Update with actual measurements from your template PDF.",
+  "page_1": {
+    "day": {"x": 360, "y": 140, "font_size": 10},
+    "month": {"x": 430, "y": 140, "font_size": 10},
+    "year": {"x": 500, "y": 140, "font_size": 10},
+    "gym_name": {"x": 80, "y": 255, "font_size": 10},
+    "location": {"x": 155, "y": 290, "font_size": 10},
+    "gstno": {"x": 80, "y": 325, "font_size": 10},
+    "pan": {"x": 350, "y": 325, "font_size": 10}
+  },
+  "page_5": {
+    "registered_address": {"x": 100, "y": 150, "font_size": 9},
+    "operational_address": {"x": 100, "y": 200, "font_size": 9},
+    "authorized_person": {"x": 150, "y": 250, "font_size": 10},
+    "mobile_number": {"x": 150, "y": 280, "font_size": 10},
+    "email": {"x": 150, "y": 310, "font_size": 10}
+  },
+  "page_6": {
+    "bank_account_holder": {"x": 180, "y": 150, "font_size": 10},
+    "bank_name": {"x": 180, "y": 180, "font_size": 10},
+    "bank_account_number": {"x": 180, "y": 210, "font_size": 10},
+    "bank_ifsc": {"x": 180, "y": 240, "font_size": 10},
+    "bank_branch": {"x": 180, "y": 270, "font_size": 10},
+    "bank_pan": {"x": 180, "y": 300, "font_size": 10},
+    "company_pan_number": {"x": 180, "y": 330, "font_size": 10}
+  }
+}
