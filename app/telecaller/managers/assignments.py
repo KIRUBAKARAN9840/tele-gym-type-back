@@ -787,7 +787,8 @@ async def get_all_assignments_system(
     rejected_end_date: Optional[date] = Query(None, description="Rejected end date"),
     no_response_filter: Optional[str] = Query(None, description="Filter by no response date: today, this_week, this_month, custom"),
     no_response_start_date: Optional[date] = Query(None, description="No response start date"),
-    no_response_end_date: Optional[date] = Query(None, description="No response end date")
+    no_response_end_date: Optional[date] = Query(None, description="No response end date"),
+    type: Optional[str] = Query(None, description="Filter by gym type")
 ):
     """
     Get all gym assignments GLOBALLY across ALL managers.
@@ -829,6 +830,10 @@ async def get_all_assignments_system(
             # Filter by telecaller_id if provided
             if telecaller_id:
                 query = query.filter(GymAssignment.telecaller_id == telecaller_id)
+
+            # Filter by type if provided
+            if type:
+                query = query.filter(GymDatabase.type == type)
 
             # Get total count and assignments
             total = query.count()
@@ -898,6 +903,10 @@ async def get_all_assignments_system(
             # Step 4: Filter by telecaller_id if provided
             if telecaller_id:
                 query = query.filter(GymCallLogs.telecaller_id == telecaller_id)
+
+            # Step 5: Filter by type if provided
+            if type:
+                query = query.filter(GymDatabase.type == type)
 
             # Get all results (we'll filter by status and manager after)
             all_call_logs = query.all()

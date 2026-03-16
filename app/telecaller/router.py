@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from app.telecaller.auth import manager_auth, telecaller_auth
-from app.telecaller.managers import assignments, performance, all_assignments, async_assignments
+from app.telecaller.managers import assignments, performance, all_assignments, async_assignments, manager_tracker
 from app.telecaller.telecallers import assignments as telecaller_assignments, call_logs, quick_call_log, gyms, test_auth
 from app.telecaller.dashboard import manager_dashboard, telecaller_dashboard
 from app.telecaller.status import gym_registration_status
@@ -46,6 +46,13 @@ router.include_router(
     async_assignments.router,
     prefix="/manager",
     tags=["manager-async-assignments"]
+)
+
+# Manager tracker routes (optimized)
+router.include_router(
+    manager_tracker.router,
+    prefix="/manager",
+    tags=["manager-tracker"]
 )
 
 
