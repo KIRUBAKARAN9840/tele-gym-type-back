@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, desc, func, or_, exists, cast, String
+from sqlalchemy import select, desc, func, or_, exists, cast, String, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from datetime import datetime, date
@@ -8,7 +8,7 @@ from datetime import datetime, date
 from app.models.async_database import get_async_db
 from app.models.client_activity_models import ClientActivitySummary, ClientActivityEvent
 from app.models.fittbot_models import Client, Gym, SessionPurchase, FittbotGymMembership
-from app.models.dailypass_models import DailyPass
+from app.models.dailypass_models import DailyPass, DailyPassDay
 from app.models.telecaller_models import ClientCallFeedback, Telecaller
 
 router = APIRouter(prefix="/client-tracking", tags=["Client Tracking"])
@@ -74,7 +74,10 @@ async def get_clients_summary(
             # Purchased filter: clients with at least one purchase in any of 3 tables
             dp_exists = exists().where(DailyPass.client_id == cast(ClientActivitySummary.client_id, String))
             sp_exists = exists().where((SessionPurchase.client_id == ClientActivitySummary.client_id) & (SessionPurchase.status == "paid"))
-            gm_exists = exists().where(FittbotGymMembership.client_id == cast(ClientActivitySummary.client_id, String))
+            gm_exists = exists().where(
+                (FittbotGymMembership.client_id == cast(ClientActivitySummary.client_id, String))
+                & (FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
+            )
             count_query = count_query.where(or_(dp_exists, sp_exists, gm_exists))
         elif call_status:
             count_query = count_query.join(
@@ -113,7 +116,10 @@ async def get_clients_summary(
             # Purchased filter: same exists logic
             dp_exists = exists().where(DailyPass.client_id == cast(ClientActivitySummary.client_id, String))
             sp_exists = exists().where((SessionPurchase.client_id == ClientActivitySummary.client_id) & (SessionPurchase.status == "paid"))
-            gm_exists = exists().where(FittbotGymMembership.client_id == cast(ClientActivitySummary.client_id, String))
+            gm_exists = exists().where(
+                (FittbotGymMembership.client_id == cast(ClientActivitySummary.client_id, String))
+                & (FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
+            )
 
             main_query = (
                 select(
@@ -315,7 +321,10 @@ async def get_clients_summary(
                 FittbotGymMembership.client_id,
                 func.count(FittbotGymMembership.id).label("cnt"),
             )
-            .where(FittbotGymMembership.client_id.in_(str_client_ids))
+            .where(
+                FittbotGymMembership.client_id.in_(str_client_ids),
+                FittbotGymMembership.type.in_(["gym_membership", "personal_training"]),
+            )
             .group_by(FittbotGymMembership.client_id)
         )
         gm_count_map = {int(r.client_id): r.cnt for r in gm_count_result.all()}
@@ -346,7 +355,10 @@ async def get_clients_summary(
                 FittbotGymMembership.client_id,
                 func.max(FittbotGymMembership.purchased_at).label("last_date"),
             )
-            .where(FittbotGymMembership.client_id.in_(str_client_ids))
+            .where(
+                FittbotGymMembership.client_id.in_(str_client_ids),
+                FittbotGymMembership.type.in_(["gym_membership", "personal_training"]),
+            )
             .group_by(FittbotGymMembership.client_id)
         )
         gm_date_map = {int(r.client_id): r.last_date for r in gm_date_result.all()}
@@ -413,7 +425,6 @@ async def get_clients_summary(
             status_code=500,
             detail=f"Failed to fetch clients summary: {str(e)}",
         )
-
 
 @router.get("/client-detail/{client_id}")
 async def get_client_detail(
@@ -511,17 +522,65 @@ async def get_client_detail(
         str_client_id = str(client_id)
         all_purchases = []
 
-        # daily passes
+        # daily passes - get day status from daily_pass_days table with aggregated info
+        from sqlalchemy import case, literal_column, over
+
+        # Query to get attendance stats for each pass
+        day_stats_subq = select(
+            DailyPassDay.pass_id,
+            func.count().label('total_days'),
+            func.sum(case(
+                (DailyPassDay.status == 'attended', 1),
+                else_=0
+            )).label('attended_days'),
+            func.sum(case(
+                (DailyPassDay.status == 'missed', 1),
+                else_=0
+            )).label('missed_days'),
+            func.sum(case(
+                (DailyPassDay.status == 'scheduled', 1),
+                else_=0
+            )).label('scheduled_days')
+        ).group_by(DailyPassDay.pass_id).subquery()
+
+        # Get the most recent past day's status
+        latest_past_day_subq = select(
+            DailyPassDay.pass_id,
+            DailyPassDay.status.label('latest_past_status'),
+            func.row_number().over(
+                partition_by=DailyPassDay.pass_id,
+                order_by=desc(DailyPassDay.scheduled_date)
+            ).label('rn')
+        ).where(
+            # Only get past days (today or before)
+            DailyPassDay.scheduled_date <= func.current_date()
+        ).subquery()
+
         dp_result = await db.execute(
-            select(DailyPass)
+            select(
+                DailyPass,
+                day_stats_subq.c.total_days,
+                day_stats_subq.c.attended_days,
+                day_stats_subq.c.missed_days,
+                day_stats_subq.c.scheduled_days,
+                latest_past_day_subq.c.latest_past_status
+            )
+            .join(day_stats_subq, DailyPass.id == day_stats_subq.c.pass_id)
+            .outerjoin(
+                latest_past_day_subq,
+                and_(
+                    DailyPass.id == latest_past_day_subq.c.pass_id,
+                    latest_past_day_subq.c.rn == 1
+                )
+            )
             .where(DailyPass.client_id == str_client_id)
             .order_by(desc(DailyPass.created_at))
             .limit(5)
         )
-        daily_passes = dp_result.scalars().all()
+        daily_passes = dp_result.all()
 
         if daily_passes:
-            dp_gym_ids = list({dp.gym_id for dp in daily_passes if dp.gym_id})
+            dp_gym_ids = list({dp.DailyPass.gym_id for dp in daily_passes if dp.DailyPass.gym_id})
             dp_gym_map = {}
             if dp_gym_ids:
                 dp_gym_result = await db.execute(
@@ -530,13 +589,34 @@ async def get_client_detail(
                 dp_gym_map = {str(g.gym_id): g.name for g in dp_gym_result.scalars().all()}
 
             for dp in daily_passes:
+                total_days = dp.total_days or 0
+                attended = dp.attended_days or 0
+                missed = dp.missed_days or 0
+                scheduled = dp.scheduled_days or 0
+
+                # Calculate attendance percentage
+                attendance_percent = round((attended / total_days * 100)) if total_days > 0 else 0
+
+                # Determine display status
+                # If all days are completed (no scheduled days remaining)
+                if scheduled == 0:
+                    if attended == total_days:
+                        status_display = f"Completed ({attended}/{total_days} attended)"
+                    elif missed > 0:
+                        status_display = f"Partially attended ({attended}/{total_days})"
+                    else:
+                        status_display = f"{missed}/{total_days} missed"
+                else:
+                    # Some days still remaining
+                    status_display = f"In progress ({attended}/{total_days} attended)"
+
                 all_purchases.append({
                     "type": "dailypass",
-                    "gym_name": dp_gym_map.get(str(dp.gym_id), "Unknown Gym"),
-                    "amount": (dp.amount_paid * 0.01) if dp.amount_paid else 0,
-                    "status": dp.status,
-                    "days": dp.days_total,
-                    "date": dp.created_at.isoformat() if dp.created_at else None,
+                    "gym_name": dp_gym_map.get(str(dp.DailyPass.gym_id), "Unknown Gym"),
+                    "amount": (dp.DailyPass.amount_paid * 0.01) if dp.DailyPass.amount_paid else 0,
+                    "status": status_display,
+                    "days": dp.DailyPass.days_total,
+                    "date": dp.DailyPass.created_at.isoformat() if dp.DailyPass.created_at else None,
                 })
 
         # session purchases
