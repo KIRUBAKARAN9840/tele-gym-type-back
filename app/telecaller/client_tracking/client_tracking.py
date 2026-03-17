@@ -588,6 +588,27 @@ async def get_client_detail(
                 )
                 dp_gym_map = {str(g.gym_id): g.name for g in dp_gym_result.scalars().all()}
 
+            # Get all pass IDs from the result
+            pass_ids = [dp.DailyPass.id for dp in daily_passes]
+
+            # Fetch all scheduled days for these passes
+            all_days_result = await db.execute(
+                select(DailyPassDay)
+                .where(DailyPassDay.pass_id.in_(pass_ids))
+                .order_by(DailyPassDay.scheduled_date)
+            )
+            all_days = all_days_result.scalars().all()
+
+            # Group days by pass_id
+            pass_days_map = {}
+            for day in all_days:
+                if day.pass_id not in pass_days_map:
+                    pass_days_map[day.pass_id] = []
+                pass_days_map[day.pass_id].append({
+                    "scheduled_date": day.scheduled_date.isoformat() if day.scheduled_date else None,
+                    "status": day.status
+                })
+
             for dp in daily_passes:
                 total_days = dp.total_days or 0
                 attended = dp.attended_days or 0
@@ -617,6 +638,7 @@ async def get_client_detail(
                     "status": status_display,
                     "days": dp.DailyPass.days_total,
                     "date": dp.DailyPass.created_at.isoformat() if dp.DailyPass.created_at else None,
+                    "scheduled_dates": pass_days_map.get(dp.DailyPass.id, [])
                 })
 
         # session purchases
