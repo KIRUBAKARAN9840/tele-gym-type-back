@@ -3,8 +3,8 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, cast, String, or_, desc, union, union_all, literal, over
 from app.models.async_database import get_async_db
-from app.models.telecaller_models import Telecaller, UserConversion, ClientCallFeedback
-from app.models.fittbot_models import Client, Gym
+from app.models.telecaller_models import Telecaller, UserConversion, ClientCallFeedback, ConvertedBy
+from app.models.fittbot_models import Client, Gym, GymOwner
 
 router = APIRouter(prefix="/api/admin/user-conversion", tags=["AdminUserConversion"])
 
@@ -239,4 +239,117 @@ async def get_telecaller_converted_clients(
         return {
             "success": False,
             "message": f"Failed to fetch converted clients: {str(e)}"
+        }
+
+
+@router.get("/telecallers/{telecaller_id}/converted-gyms")
+async def get_telecaller_converted_gyms(
+    telecaller_id: int,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=10, ge=1, le=100),
+    search: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Get gyms converted by a telecaller.
+
+    Flow:
+    1. Query converted_by table in telecaller schema for gym_ids where telecaller_id matches
+    2. Join with gyms table in fittbot_local schema to get gym details
+    3. Join with gym_owners table to get contact number
+    4. Apply search, pagination and return results
+    """
+    try:
+        # Verify telecaller exists
+        telecaller_stmt = select(Telecaller).where(Telecaller.id == telecaller_id)
+        telecaller_result = await db.execute(telecaller_stmt)
+        telecaller = telecaller_result.scalar_one_or_none()
+
+        if not telecaller:
+            return {
+                "success": False,
+                "message": "Telecaller not found"
+            }
+
+        # Build query with joins: converted_by -> gyms -> gym_owners
+        gym_stmt = select(
+            Gym.gym_id,
+            Gym.name.label('gym_name'),
+            Gym.area,
+            Gym.location,
+            GymOwner.contact_number.label('owner_contact'),
+            GymOwner.name.label('owner_name'),
+            ConvertedBy.created_at.label('converted_at')
+        ).join(
+            ConvertedBy,
+            ConvertedBy.gym_id == Gym.gym_id
+        ).outerjoin(
+            GymOwner,
+            Gym.owner_id == GymOwner.owner_id
+        ).where(
+            ConvertedBy.telecaller_id == telecaller_id
+        )
+
+        # Apply search filter if provided
+        if search and search.strip():
+            search_term = f"%{search.lower()}%"
+            gym_stmt = gym_stmt.where(
+                or_(
+                    func.lower(Gym.name).like(search_term),
+                    Gym.area.like(search_term),
+                    Gym.location.like(search_term),
+                    Gym.gym_id.like(search_term)
+                )
+            )
+
+        # Get total count before pagination
+        count_subquery = gym_stmt.subquery()
+        count_stmt = select(func.count()).select_from(count_subquery)
+        count_result = await db.execute(count_stmt)
+        total_count = count_result.scalar() or 0
+
+        # Apply pagination and sorting
+        offset = (page - 1) * limit
+        gym_stmt = gym_stmt.order_by(desc(ConvertedBy.created_at)).offset(offset).limit(limit)
+
+        gym_result = await db.execute(gym_stmt)
+        gyms = gym_result.all()
+
+        gym_list = []
+        for gym in gyms:
+            gym_list.append({
+                "gym_id": gym.gym_id,
+                "gym_name": gym.gym_name,
+                "area": gym.area,
+                "location": gym.location,
+                "contact_number": gym.owner_contact,
+                "owner_name": gym.owner_name,
+                "converted_at": gym.converted_at.isoformat() if gym.converted_at else None
+            })
+
+        total_pages = (total_count + limit - 1) // limit
+
+        return {
+            "success": True,
+            "data": {
+                "telecaller": {
+                    "id": telecaller.id,
+                    "name": telecaller.name,
+                    "mobile_number": telecaller.mobile_number
+                },
+                "gyms": gym_list,
+                "total": total_count,
+                "page": page,
+                "limit": limit,
+                "totalPages": total_pages,
+                "hasNext": page < total_pages,
+                "hasPrev": page > 1
+            },
+            "message": "Converted gyms fetched successfully"
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Failed to fetch converted gyms: {str(e)}"
         }
