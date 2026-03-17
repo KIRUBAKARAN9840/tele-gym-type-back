@@ -734,7 +734,7 @@ async def get_call_feedback(
                 ClientCallFeedback.status,
                 ClientCallFeedback.created_at,
             )
-            .join(Telecaller, Telecaller.id == ClientCallFeedback.executive_id)
+            .outerjoin(Telecaller, Telecaller.id == ClientCallFeedback.executive_id)
             .where(ClientCallFeedback.client_id == client_id)
             .order_by(desc(ClientCallFeedback.created_at))
             .offset(offset)
