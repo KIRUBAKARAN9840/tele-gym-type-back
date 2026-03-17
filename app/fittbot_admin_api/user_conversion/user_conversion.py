@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, cast, String, or_, desc, union, union_all, literal
+from sqlalchemy import select, func, cast, String, or_, desc, union, union_all, literal, over
 from app.models.async_database import get_async_db
 from app.models.telecaller_models import Telecaller, UserConversion, ClientCallFeedback
 from app.models.fittbot_models import Client, Gym
@@ -31,19 +31,37 @@ async def get_telecallers_with_conversion_count(
         telecaller_list = []
         for telecaller in telecallers:
             # Count distinct converted client_ids from both UserConversion and ClientCallFeedback
+            # Use ROW_NUMBER to get only the latest entry per client
             uc_clients = select(
-                cast(UserConversion.client_id, String).label('client_id')
+                UserConversion.id.label('conversion_id'),
+                cast(UserConversion.client_id, String).label('client_id'),
+                UserConversion.converted_at,
+                literal('user_conversion').label('source')
             ).where(UserConversion.telecaller_id == telecaller.id)
 
             ccf_clients = select(
-                cast(ClientCallFeedback.client_id, String).label('client_id')
+                ClientCallFeedback.id.label('conversion_id'),
+                cast(ClientCallFeedback.client_id, String).label('client_id'),
+                ClientCallFeedback.created_at.label('converted_at'),
+                literal('call_feedback').label('source')
             ).where(
                 ClientCallFeedback.executive_id == telecaller.id,
                 ClientCallFeedback.status == 'converted'
             )
 
-            all_converted = union(uc_clients, ccf_clients).subquery()
-            count_stmt = select(func.count()).select_from(all_converted)
+            combined = union_all(uc_clients, ccf_clients).subquery()
+
+            # Use window function to rank by converted_at for each client
+            ranked = select(
+                combined.c.client_id,
+                func.row_number().over(
+                    partition_by=combined.c.client_id,
+                    order_by=desc(combined.c.converted_at)
+                ).label('rn')
+            ).subquery()
+
+            # Count only the latest (rn = 1) for each client
+            count_stmt = select(func.count()).select_from(ranked).where(ranked.c.rn == 1)
             count_result = await db.execute(count_stmt)
             total_converted = count_result.scalar() or 0
 
@@ -114,12 +132,36 @@ async def get_telecaller_converted_clients(
 
         combined = union_all(uc_sub, ccf_sub).subquery()
 
-        conversion_stmt = select(
+        # Create a window function to rank records by converted_at for each client
+        # This helps us get only the latest entry for each client_id
+        from sqlalchemy import over, Integer
+        ranked_stmt = select(
             combined.c.conversion_id,
             combined.c.client_id,
             combined.c.purchased_plan,
             combined.c.converted_at,
             combined.c.source,
+            func.row_number().over(
+                partition_by=combined.c.client_id,
+                order_by=desc(combined.c.converted_at)
+            ).label('rn')
+        ).subquery()
+
+        # Filter to keep only the latest record for each client (rn = 1)
+        latest_conversions = select(
+            ranked_stmt.c.conversion_id,
+            ranked_stmt.c.client_id,
+            ranked_stmt.c.purchased_plan,
+            ranked_stmt.c.converted_at,
+            ranked_stmt.c.source
+        ).where(ranked_stmt.c.rn == 1).subquery()
+
+        conversion_stmt = select(
+            latest_conversions.c.conversion_id,
+            latest_conversions.c.client_id,
+            latest_conversions.c.purchased_plan,
+            latest_conversions.c.converted_at,
+            latest_conversions.c.source,
             Client.name.label('client_name'),
             Client.contact.label('client_contact'),
             Client.email.label('client_email'),
@@ -127,7 +169,7 @@ async def get_telecaller_converted_clients(
             Gym.name.label('gym_name')
         ).outerjoin(
             Client,
-            combined.c.client_id == cast(Client.client_id, String)
+            latest_conversions.c.client_id == cast(Client.client_id, String)
         ).outerjoin(
             Gym,
             Client.gym_id == Gym.gym_id
@@ -140,7 +182,7 @@ async def get_telecaller_converted_clients(
                 or_(
                     func.lower(Client.name).like(search_term),
                     Client.contact.like(search_term),
-                    combined.c.client_id.like(search_term)
+                    latest_conversions.c.client_id.like(search_term)
                 )
             )
 
@@ -152,7 +194,7 @@ async def get_telecaller_converted_clients(
 
         # Apply pagination
         offset = (page - 1) * limit
-        conversion_stmt = conversion_stmt.order_by(desc(combined.c.converted_at)).offset(offset).limit(limit)
+        conversion_stmt = conversion_stmt.order_by(desc(latest_conversions.c.converted_at)).offset(offset).limit(limit)
 
         conversion_result = await db.execute(conversion_stmt)
         conversions = conversion_result.all()
