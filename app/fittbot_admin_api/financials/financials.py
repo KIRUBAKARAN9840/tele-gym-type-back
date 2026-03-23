@@ -5,7 +5,7 @@ from sqlalchemy import func, and_, select, distinct, or_
 from app.models.async_database import get_async_db
 from app.models.dailypass_models import get_dailypass_session, DailyPass
 from app.models.fittbot_models import (
-    SessionBookingDay, SessionBooking, Gym, ActiveUser
+    SessionBookingDay, SessionBooking, Gym, ActiveUser, Client
 )
 from app.fittbot_api.v1.payments.models.payments import Payment
 from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
@@ -255,10 +255,14 @@ async def get_active_users_count(
     try:
         # Use the filter date range (start_date to end_date)
         # Only count users with 2+ distinct dates in the selected range
-        subquery = select(ActiveUser.client_id).where(
+        # Exclude users from gym_id = 1
+        subquery = select(ActiveUser.client_id).join(
+            Client, ActiveUser.client_id == Client.client_id
+        ).where(
             and_(
                 func.date(ActiveUser.created_at) >= start_date,
-                func.date(ActiveUser.created_at) <= end_date
+                func.date(ActiveUser.created_at) <= end_date,
+                Client.gym_id != 1
             )
         ).group_by(
             ActiveUser.client_id
@@ -287,24 +291,44 @@ async def get_paying_users_count(
     start_date,
     end_date
 ):
-   
+
     try:
         conditions = [
             func.date(Payment.created_at) >= start_date,
             func.date(Payment.created_at) <= end_date
         ]
 
-        # Single aggregated query for distinct customer count
-        count_query = select(func.count(func.distinct(Payment.customer_id)))
-        if conditions:
-            count_query = count_query.where(and_(*conditions))
+        # Query to count distinct customer_id, excluding gym_id = 1
+        # Join Payment -> Order -> OrderItem to filter by gym_id
+        from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
 
+        paying_users_subquery = select(Payment.customer_id).join(
+            Order, Order.id == Payment.order_id
+        ).join(
+            OrderItem, OrderItem.order_id == Order.id
+        ).where(
+            and_(
+                OrderItem.gym_id.isnot(None),
+                OrderItem.gym_id != "1"
+            )
+        )
+
+        # Add date conditions
+        for condition in conditions:
+            paying_users_subquery = paying_users_subquery.where(condition)
+
+        paying_users_subquery = paying_users_subquery.distinct().alias("paying_users")
+
+        # Count the results
+        count_query = select(func.count()).select_from(paying_users_subquery)
         count_result = await db.execute(count_query)
         paying_users_count = count_result.scalar() or 0
 
         return int(paying_users_count)
     except Exception as e:
         print(f"[FINANCIALS] Error fetching paying users: {e}")
+        import traceback
+        traceback.print_exc()
         return 0
 
 
@@ -414,8 +438,8 @@ async def get_financials_overview(
         if start_date:
             start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
         else:
-            # Default to last 30 days
-            start_date_obj = datetime.now().date() - timedelta(days=30)
+            # Default to early date for overall data (matching Revenue Analytics behavior)
+            start_date_obj = datetime(2020, 1, 1).date()
 
         if end_date:
             end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
