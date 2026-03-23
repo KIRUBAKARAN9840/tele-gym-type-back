@@ -113,7 +113,13 @@ async def get_revenue_breakdown_optimized(db: AsyncSession, dailypass_session, s
                 if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
                     condition2 = True
 
-            if condition1 or condition2:
+            # Condition 3: order_info.flow = "unified_gym_membership_with_free_fittbot"
+            condition3 = False
+            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                    condition3 = True
+
+            if condition1 or condition2 or condition3:
                 gym_membership_revenue += amount
 
     except Exception as e:
