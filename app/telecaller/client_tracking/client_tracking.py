@@ -7,7 +7,7 @@ from datetime import datetime, date
 
 from app.models.async_database import get_async_db
 from app.models.client_activity_models import ClientActivitySummary, ClientActivityEvent
-from app.models.fittbot_models import Client, Gym, SessionPurchase, FittbotGymMembership
+from app.models.fittbot_models import Client, Gym, SessionPurchase, FittbotGymMembership, SessionBookingDay
 from app.models.dailypass_models import DailyPass, DailyPassDay
 from app.models.telecaller_models import ClientCallFeedback, Telecaller
 
@@ -659,7 +659,48 @@ async def get_client_detail(
                 )
                 sp_gym_map = {g.gym_id: g.name for g in sp_gym_result.scalars().all()}
 
+            # Extract schedule_ids from scheduled_sessions JSON and group by schedule_id
+            schedule_ids = []
+            purchase_schedule_map = {}  # Maps schedule_id to purchase info
+
             for sp in session_purchases:
+                if sp.scheduled_sessions:
+                    import json
+                    try:
+                        scheduled = json.loads(sp.scheduled_sessions) if isinstance(sp.scheduled_sessions, str) else sp.scheduled_sessions
+                        if isinstance(scheduled, list) and len(scheduled) > 0:
+                            schedule_id = scheduled[0].get('schedule_id')
+                            if schedule_id:
+                                schedule_ids.append(schedule_id)
+                                purchase_schedule_map[schedule_id] = sp
+                    except:
+                        pass
+
+            # Fetch all booking days for these schedule_ids
+            schedule_booking_map = {}
+
+            if schedule_ids:
+                booking_days_result = await db.execute(
+                    select(SessionBookingDay)
+                    .where(SessionBookingDay.schedule_id.in_(schedule_ids))
+                    .order_by(SessionBookingDay.booking_date)
+                )
+                all_booking_days = booking_days_result.scalars().all()
+
+                for booking in all_booking_days:
+                    sid = booking.schedule_id
+                    if sid not in schedule_booking_map:
+                        schedule_booking_map[sid] = []
+
+                    schedule_booking_map[sid].append({
+                        "booking_date": booking.booking_date.isoformat() if booking.booking_date else None,
+                        "status": booking.status,
+                        "start_time": booking.start_time.isoformat() if booking.start_time else None,
+                        "end_time": booking.end_time.isoformat() if booking.end_time else None
+                    })
+
+            # Create one card per schedule_id
+            for schedule_id, sp in purchase_schedule_map.items():
                 all_purchases.append({
                     "type": "session",
                     "gym_name": sp_gym_map.get(sp.gym_id, "Unknown Gym"),
@@ -667,6 +708,7 @@ async def get_client_detail(
                     "status": sp.status,
                     "sessions_count": sp.sessions_count,
                     "date": sp.created_at.isoformat() if sp.created_at else None,
+                    "scheduled_dates": schedule_booking_map.get(schedule_id, [])
                 })
 
         # gym memberships
