@@ -162,12 +162,14 @@ async def get_revenue_with_amortization(
     """
 
     # 1. DAILY PASS REVENUE - Only passes purchased in target month (one-time product)
+    # Exclude gym_id = 1
     daily_pass_revenue = 0
     try:
         daily_pass_stmt = (
             select(func.coalesce(func.sum(DailyPass.amount_paid), 0))
             .where(func.date(DailyPass.created_at) >= target_month_start)
             .where(func.date(DailyPass.created_at) <= target_month_end)
+            .where(DailyPass.gym_id != "1")
         )
         daily_pass_result = await db.execute(daily_pass_stmt)
         daily_pass_revenue = daily_pass_result.scalar() or 0
@@ -175,6 +177,7 @@ async def get_revenue_with_amortization(
         print(f"[MRR] Error fetching Daily Pass: {e}")
 
     # 2. SESSIONS REVENUE - Only sessions booked in target month (one-time product)
+    # Exclude gym_id = 1
     sessions_revenue = 0
     try:
         sessions_stmt = (
@@ -182,6 +185,7 @@ async def get_revenue_with_amortization(
             .join(SessionBookingDay, SessionBooking.schedule_id == SessionBookingDay.schedule_id)
             .where(func.date(SessionBookingDay.booking_date) >= target_month_start)
             .where(func.date(SessionBookingDay.booking_date) <= target_month_end)
+            .where(SessionBookingDay.gym_id != 1)
         )
         sessions_result = await db.execute(sessions_stmt)
         sessions_revenue = sessions_result.scalar() or 0
@@ -190,6 +194,7 @@ async def get_revenue_with_amortization(
 
     # 3. FITTBOT SUBSCRIPTION REVENUE - All subscriptions ACTIVE during target month
     # Active = payment_date <= target_month_end AND (payment_date + duration_months) > target_month_start
+    # Exclude gym_id = 1
     fittbot_subscription_revenue = 0
     try:
         # Fetch all relevant subscriptions with their payment dates and SKUs
@@ -213,6 +218,7 @@ async def get_revenue_with_amortization(
                     OrderItem.item_type == "fittbot_subscription"
                 )
             )
+            .where(or_(OrderItem.gym_id != "1", OrderItem.gym_id.is_(None)))
         )
 
         fittbot_result = await db.execute(fittbot_stmt)
@@ -250,6 +256,7 @@ async def get_revenue_with_amortization(
 
     # 4. GYM MEMBERSHIP REVENUE - All memberships ACTIVE during target month
     # Active = purchased_at <= target_month_end AND (purchased_at + duration_months) > target_month_start
+    # Exclude gym_id = 1
     gym_membership_revenue = 0
     try:
         gym_membership_stmt = (
@@ -261,6 +268,7 @@ async def get_revenue_with_amortization(
             .select_from(FittbotGymMembership)
             .outerjoin(GymPlans, FittbotGymMembership.plan_id == GymPlans.id)
             .where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
+            .where(FittbotGymMembership.gym_id != "1")
         )
 
         gym_membership_result = await db.execute(gym_membership_stmt)
