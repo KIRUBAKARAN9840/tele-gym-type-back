@@ -255,52 +255,92 @@ async def get_revenue_with_amortization(
         fittbot_subscription_revenue = 0
 
     # 4. GYM MEMBERSHIP REVENUE - All memberships ACTIVE during target month
-    # Active = purchased_at <= target_month_end AND (purchased_at + duration_months) > target_month_start
+    # Using same logic as Financials/Revenue Analytics APIs (Order-based with metadata conditions)
+    # Metadata conditions: audit.source = "dailypass_checkout_api" OR
+    #                      order_info.flow = "unified_gym_membership_with_sub" OR
+    #                      order_info.flow = "unified_gym_membership_with_free_fittbot"
     # Exclude gym_id = 1
+    # Amortization: Default to 1 month duration (since Orders and FittbotGymMembership are in different schemas)
     gym_membership_revenue = 0
     try:
+        # Fetch payments and orders (same as financials.py)
         gym_membership_stmt = (
-            select(
-                FittbotGymMembership.amount,
-                GymPlans.duration,
-                FittbotGymMembership.purchased_at
-            )
-            .select_from(FittbotGymMembership)
-            .outerjoin(GymPlans, FittbotGymMembership.plan_id == GymPlans.id)
-            .where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
-            .where(FittbotGymMembership.gym_id != "1")
+            select(Payment, Order)
+            .join(Order, Order.id == Payment.order_id)
+            .where(Payment.status == "captured")
+            .where(Order.status == "paid")
+            .where(func.date(Payment.captured_at) >= target_month_start)
+            .where(func.date(Payment.captured_at) <= target_month_end)
         )
 
         gym_membership_result = await db.execute(gym_membership_stmt)
-        memberships = gym_membership_result.all()
+        payments = gym_membership_result.all()
 
-        for membership in memberships:
-            amount = membership.amount or 0
-            duration_months = membership.duration or 1
-            purchased_at = membership.purchased_at
+        # Collect order IDs to fetch gym info from order_items (exclude gym_id = 1)
+        order_ids = [row.Order.id for row in payments]
 
-            if not purchased_at:
+        # Fetch order items to get gym_ids (exclude gym_id = 1)
+        order_gym_mapping = {}
+        if order_ids:
+            order_items_stmt = (
+                select(OrderItem)
+                .where(OrderItem.order_id.in_(order_ids))
+                .where(OrderItem.gym_id.isnot(None))
+                .where(OrderItem.gym_id != "1")
+            )
+            order_items_result = await db.execute(order_items_stmt)
+            order_items = order_items_result.scalars().all()
+
+            # Create mapping from order_id to gym_id
+            for item in order_items:
+                if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
+                    order_gym_mapping[item.order_id] = int(item.gym_id)
+
+        # Filter by metadata conditions and gym_id exclusion
+        for row in payments:
+            payment = row.Payment
+            order = row.Order
+
+            # Check order_metadata for specific conditions (same as Financials/Revenue Analytics)
+            if not order.order_metadata or not isinstance(order.order_metadata, dict):
                 continue
 
-            purchase_date_only = purchased_at.date() if isinstance(purchased_at, datetime) else purchased_at
+            metadata = order.order_metadata
 
-            # Calculate validity end date: purchase_date + duration_months
-            # Example: Purchased Jan 15, 3 months -> valid from Jan 15 to Apr 15
-            validity_end_date = (
-                date(purchase_date_only.year, purchase_date_only.month, 1) +
-                timedelta(days=32 * duration_months)
-            )
-            validity_end_date = date(validity_end_date.year, validity_end_date.month, 1) - timedelta(days=1)
+            # Condition 1: audit.source = "dailypass_checkout_api"
+            condition1 = False
+            if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
+                if metadata["audit"].get("source") == "dailypass_checkout_api":
+                    condition1 = True
 
-            # Check if target month overlaps with validity period
-            # Active if: validity_end_date >= target_month_start AND purchase_date <= target_month_end
-            if validity_end_date >= target_month_start and purchase_date_only <= target_month_end:
-                amount_paise = amount * 100
-                mrr_contribution = amount_paise / duration_months
-                gym_membership_revenue += mrr_contribution
+            # Condition 2: order_info.flow = "unified_gym_membership_with_sub"
+            condition2 = False
+            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
+                    condition2 = True
+
+            # Condition 3: order_info.flow = "unified_gym_membership_with_free_fittbot"
+            condition3 = False
+            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                    condition3 = True
+
+            # Only include if any condition matches AND order has valid gym_id (not gym_id = 1)
+            if not (condition1 or condition2 or condition3):
+                continue
+
+            if order.id not in order_gym_mapping:
+                continue
+
+            # For MRR, use the amount directly with 1 month amortization (default duration)
+            # Since Orders and FittbotGymMembership are in different schemas and can't be linked
+            amount = order.gross_amount_minor or 0
+            gym_membership_revenue += amount
 
     except Exception as e:
         print(f"[MRR] Error fetching Gym Membership: {e}")
+        import traceback
+        traceback.print_exc()
         gym_membership_revenue = 0
 
     # Keep as float to preserve decimal precision
