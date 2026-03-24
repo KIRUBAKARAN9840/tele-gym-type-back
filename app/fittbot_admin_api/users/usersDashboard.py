@@ -2093,6 +2093,21 @@ async def get_user_session_bookings(
 
         print(f"[SESSIONS_API] Found {len(bookings)} session bookings")
 
+        # Get purchase_ids to fetch SessionPurchase amounts (same as purchases/all page)
+        purchase_ids = list({b.SessionBookingDay.purchase_id for b in bookings if b.SessionBookingDay.purchase_id})
+        purchase_amounts = {}
+        if purchase_ids:
+            purchase_stmt = (
+                select(SessionPurchase)
+                .where(SessionPurchase.id.in_(purchase_ids))
+                .where(SessionPurchase.status == "paid")
+            )
+            purchase_result = await db.execute(purchase_stmt)
+            purchases = purchase_result.scalars().all()
+            # Create mapping: purchase_id -> payable_rupees
+            for p in purchases:
+                purchase_amounts[p.id] = p.payable_rupees
+
         # Get unique session_ids to fetch session names
         session_ids = list({b.SessionBookingDay.session_id for b in bookings})
         sessions_map = {}
@@ -2126,6 +2141,10 @@ async def get_user_session_bookings(
             booking = row.SessionBookingDay
             booking_info = row.SessionBooking
 
+            # Get amount from SessionPurchase.payable_rupees (same as purchases/all page)
+            # If not found in SessionPurchase, fallback to SessionBooking.price_paid
+            price_paid = purchase_amounts.get(booking.purchase_id) if booking.purchase_id in purchase_amounts else (booking_info.price_paid if booking_info else None)
+
             session_bookings.append({
                 "id": booking.id,
                 "purchase_id": booking.purchase_id,
@@ -2138,7 +2157,7 @@ async def get_user_session_bookings(
                 "start_time": booking.start_time.strftime("%H:%M:%S") if booking.start_time else None,
                 "end_time": booking.end_time.strftime("%H:%M:%S") if booking.end_time else None,
                 "status": booking.status,
-                "price_paid": booking_info.price_paid if booking_info else None,
+                "price_paid": price_paid,
                 "created_at": booking.created_at.isoformat() if booking.created_at else None,
                 "updated_at": booking.updated_at.isoformat() if booking.updated_at else None,
             })
