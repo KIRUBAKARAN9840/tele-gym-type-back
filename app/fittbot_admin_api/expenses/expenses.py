@@ -230,14 +230,25 @@ async def get_expenses_summary(
                 "updated_at": expense.updated_at.isoformat() if expense.updated_at else None
             })
 
+        # Calculate percentages
+        operational_total = category_totals.get("operational", 0)
+        marketing_total = category_totals.get("marketing", 0)
+
+        operational_percentage = (operational_total / grand_total * 100) if grand_total > 0 else 0
+        marketing_percentage = (marketing_total / grand_total * 100) if grand_total > 0 else 0
+
         return {
             "success": True,
             "data": {
                 # Summary data
                 "grand_total": grand_total,
                 "category_totals": {
-                    "operational": category_totals.get("operational", 0),
-                    "marketing": category_totals.get("marketing", 0)
+                    "operational": operational_total,
+                    "marketing": marketing_total
+                },
+                "category_percentages": {
+                    "operational": round(operational_percentage, 2),
+                    "marketing": round(marketing_percentage, 2)
                 },
                 "category_counts": {
                     "operational": int(operational_count),
