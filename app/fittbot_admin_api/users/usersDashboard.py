@@ -1592,6 +1592,17 @@ async def get_users_overview(
 
         total_all_clients = active_clients_count + inactive_clients_count
 
+        # Platform counts (Android and iOS) - simple count from clients table
+        android_count_stmt = select(func.count()).where(func.lower(Client.platform) == "android")
+        android_count_result = await db.execute(android_count_stmt)
+        android_count = android_count_result.scalar() or 0
+
+        ios_count_stmt = select(func.count()).where(func.lower(Client.platform) == "ios")
+        ios_count_result = await db.execute(ios_count_stmt)
+        ios_count = ios_count_result.scalar() or 0
+
+        total_platform_users = android_count + ios_count
+
         # Each card shows its own count as "total" (matching individual pages)
         client_counts_data = {
             "active_clients": active_clients_count,
@@ -1609,6 +1620,12 @@ async def get_users_overview(
             # Individual page totals (for cards to use)
             "online_members_total": online_members_count,  # Shows in online-members card
             "offline_members_total": offline_members_count  # Shows in offline-members card
+        }
+
+        platform_counts_data = {
+            "android": android_count,
+            "ios": ios_count,
+            "total_platform_users": total_platform_users
         }
 
         # 4. Get paginated users with all filters
@@ -1750,7 +1767,8 @@ async def get_users_overview(
                 "hasPrev": has_prev,
                 "plans": plans_data,
                 "clientCounts": client_counts_data,
-                "onlineOfflineCounts": online_offline_counts_data
+                "onlineOfflineCounts": online_offline_counts_data,
+                "platformCounts": platform_counts_data
             },
             "message": "Users overview fetched successfully"
         }
