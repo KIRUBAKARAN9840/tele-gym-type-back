@@ -1,12 +1,221 @@
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, cast, String, or_, desc, union, union_all, literal, over
+from sqlalchemy import select, func, cast, String, or_, and_, desc, union, union_all, literal, over
 from app.models.async_database import get_async_db
 from app.models.telecaller_models import Telecaller, UserConversion, ClientCallFeedback, ConvertedBy
-from app.models.fittbot_models import Client, Gym, GymOwner
+from app.models.fittbot_models import Client, Gym, GymOwner, SessionPurchase, FittbotGymMembership
+from app.models.dailypass_models import DailyPass, get_dailypass_session
+from app.fittbot_api.v1.payments.models.subscriptions import Subscription
+from app.fittbot_admin_api.users.usersDashboard import get_plan_name_from_product_id
+from datetime import datetime, timezone, timedelta
+
+# IST timezone
+IST = timezone(timedelta(hours=5, minutes=30))
 
 router = APIRouter(prefix="/api/admin/user-conversion", tags=["AdminUserConversion"])
+
+
+async def get_latest_purchase_type(user_id: str, db: AsyncSession) -> Optional[str]:
+    """
+    Get the latest purchase type for a user.
+    Returns a single string like "Daily Pass", "Session", "Gym Membership", or "Fittbot Subscription".
+    Optimized with a single UNION query.
+    """
+    try:
+        # Build a UNION query to get the latest purchase from all 4 types
+        daily_pass_sub = select(
+            DailyPass.created_at.label('purchase_date'),
+            literal('Daily Pass').label('purchase_type')
+        ).where(
+            DailyPass.client_id == user_id
+        )
+
+        session_sub = select(
+            SessionPurchase.created_at.label('purchase_date'),
+            literal('Session').label('purchase_type')
+        ).where(
+            and_(
+                SessionPurchase.client_id == user_id,
+                SessionPurchase.status == "paid"
+            )
+        )
+
+        membership_sub = select(
+            FittbotGymMembership.purchased_at.label('purchase_date'),
+            literal('Gym Membership').label('purchase_type')
+        ).where(
+            and_(
+                func.cast(FittbotGymMembership.client_id, String) == user_id,
+                FittbotGymMembership.type.notin_(['normal', 'admission_fees'])
+            )
+        )
+
+        subscription_sub = select(
+            Subscription.created_at.label('purchase_date'),
+            literal('Fittbot Subscription').label('purchase_type')
+        ).where(
+            and_(
+                Subscription.customer_id == user_id,
+                Subscription.provider.notin_(['free_trial', 'internal_manual'])
+            )
+        )
+
+        # Combine all and get the latest
+        combined = union_all(
+            daily_pass_sub,
+            session_sub,
+            membership_sub,
+            subscription_sub
+        ).subquery()
+
+        latest_stmt = select(
+            combined.c.purchase_type
+        ).order_by(
+            desc(combined.c.purchase_date)
+        ).limit(1)
+
+        latest_result = await db.execute(latest_stmt)
+        latest = latest_result.scalar_one_or_none()
+
+        return latest
+    except Exception as e:
+        print(f"[LATEST_PURCHASE_TYPE] Error for user {user_id}: {e}")
+        return None
+
+
+async def get_user_last_purchases_async(user_id: str, db: AsyncSession):
+    """
+    Get all four types of purchases for a specific user.
+    Returns the most recent purchase for each of the four types.
+    Async version for use in other endpoints.
+    """
+    now = datetime.now(IST)
+
+    purchases = {
+        "daily_pass": None,
+        "session": None,
+        "membership": None,
+        "subscription": None
+    }
+
+    # 1. Get latest Daily Pass
+    try:
+        daily_pass_stmt = select(
+            DailyPass,
+            Gym.name.label('gym_name')
+        ).outerjoin(
+            Gym, DailyPass.gym_id == cast(Gym.gym_id, String)
+        ).where(
+            DailyPass.client_id == user_id
+        ).order_by(DailyPass.created_at.desc()).limit(1)
+
+        daily_pass_result = await db.execute(daily_pass_stmt)
+        daily_pass_row = daily_pass_result.first()
+
+        if daily_pass_row:
+            dp = daily_pass_row.DailyPass
+            purchases["daily_pass"] = {
+                "type": "Daily Pass",
+                "purchase_date": dp.created_at.isoformat() if dp.created_at else None,
+                "gym_name": daily_pass_row.gym_name,
+                "days_total": dp.days_total,
+                "amount_paid": float(dp.amount_paid) if dp.amount_paid else None
+            }
+    except Exception as e:
+        print(f"[LAST_PURCHASES] Error fetching Daily Pass: {e}")
+
+    # 2. Get latest Session Purchase (only paid status)
+    try:
+        session_stmt = select(
+            SessionPurchase,
+            Gym.name.label('gym_name')
+        ).outerjoin(
+            Gym, SessionPurchase.gym_id == Gym.gym_id
+        ).where(
+            and_(
+                SessionPurchase.client_id == user_id,
+                SessionPurchase.status == "paid"
+            )
+        ).order_by(SessionPurchase.created_at.desc()).limit(1)
+
+        session_result = await db.execute(session_stmt)
+        session_row = session_result.first()
+
+        if session_row:
+            sp = session_row.SessionPurchase
+            purchases["session"] = {
+                "type": "Session",
+                "purchase_date": sp.created_at.isoformat() if sp.created_at else None,
+                "gym_name": session_row.gym_name,
+                "sessions_count": sp.sessions_count,
+                "scheduled_sessions": sp.scheduled_sessions,
+                "payable_rupees": float(sp.payable_rupees) if sp.payable_rupees else None
+            }
+    except Exception as e:
+        print(f"[LAST_PURCHASES] Error fetching Session: {e}")
+
+    # 3. Get latest Gym Membership (excluding 'normal' and 'admission_fees')
+    try:
+        membership_stmt = select(
+            FittbotGymMembership,
+            Gym.name.label('gym_name')
+        ).outerjoin(
+            Gym, func.cast(FittbotGymMembership.gym_id, String) == func.cast(Gym.gym_id, String)
+        ).where(
+            and_(
+                func.cast(FittbotGymMembership.client_id, String) == user_id,
+                FittbotGymMembership.type.notin_(['normal', 'admission_fees'])
+            )
+        ).order_by(FittbotGymMembership.purchased_at.desc()).limit(1)
+
+        membership_result = await db.execute(membership_stmt)
+        membership_row = membership_result.first()
+
+        if membership_row:
+            gm = membership_row.FittbotGymMembership
+            purchases["membership"] = {
+                "type": "Membership",
+                "purchase_date": gm.purchased_at.isoformat() if gm.purchased_at else None,
+                "gym_name": membership_row.gym_name,
+                "membership_type": gm.type,
+                "amount": float(gm.amount) if gm.amount else None
+            }
+    except Exception as e:
+        print(f"[LAST_PURCHASES] Error fetching Membership: {e}")
+
+    # 4. Get latest Subscription (excluding 'free_trial' and 'internal_manual')
+    try:
+        sub_stmt = select(
+            Subscription
+        ).where(
+            and_(
+                Subscription.customer_id == user_id,
+                Subscription.provider.notin_(['free_trial', 'internal_manual'])
+            )
+        ).order_by(Subscription.created_at.desc()).limit(1)
+
+        sub_result = await db.execute(sub_stmt)
+        sub = sub_result.scalar_one_or_none()
+
+        if sub:
+            plan_name = get_plan_name_from_product_id(sub.product_id)
+
+            purchases["subscription"] = {
+                "type": "Subscription",
+                "purchase_date": sub.created_at.isoformat() if sub.created_at else None,
+                "gym_name": None,
+                "product_id": sub.product_id,
+                "plan_name": plan_name,
+                "provider": sub.provider,
+                "status": sub.status,
+                "active_until": sub.active_until.isoformat() if sub.active_until else None,
+                "is_active": is_subscription_active(sub.active_until, now)
+            }
+    except Exception as e:
+        print(f"[LAST_PURCHASES] Error fetching Subscription: {e}")
+
+    return purchases
 
 
 @router.get("/telecallers")
@@ -201,6 +410,9 @@ async def get_telecaller_converted_clients(
 
         client_list = []
         for conversion in conversions:
+            # Get the latest purchase type for this client
+            latest_purchase_type = await get_latest_purchase_type(conversion.client_id, db)
+
             client_list.append({
                 "conversion_id": conversion.conversion_id,
                 "client_id": conversion.client_id,
@@ -211,7 +423,8 @@ async def get_telecaller_converted_clients(
                 "purchased_plan": conversion.purchased_plan,
                 "converted_at": conversion.converted_at.isoformat() if conversion.converted_at else None,
                 "created_at": conversion.client_created_at.isoformat() if conversion.client_created_at else None,
-                "source": conversion.source
+                "source": conversion.source,
+                "latest_purchase_type": latest_purchase_type
             })
 
         total_pages = (total_count + limit - 1) // limit
