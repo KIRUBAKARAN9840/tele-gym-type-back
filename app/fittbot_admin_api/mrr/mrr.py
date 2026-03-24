@@ -14,6 +14,7 @@ from app.models.fittbot_models import SessionBookingDay, SessionBooking, GymPlan
 from app.fittbot_api.v1.payments.models.payments import Payment
 from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
 from app.fittbot_api.v1.payments.models.catalog import CatalogProduct
+from app.fittbot_api.v1.payments.models.entitlements import Entitlement
 
 router = APIRouter(prefix="/api/admin/mrr", tags=["MRR"])
 
@@ -260,28 +261,27 @@ async def get_revenue_with_amortization(
     #                      order_info.flow = "unified_gym_membership_with_sub" OR
     #                      order_info.flow = "unified_gym_membership_with_free_fittbot"
     # Exclude gym_id = 1
-    # Amortization: Default to 1 month duration (since Orders and FittbotGymMembership are in different schemas)
+    # Amortization: Link to FittbotGymMembership to get duration from GymPlans, then distribute monthly
     gym_membership_revenue = 0
     try:
-        # Fetch payments and orders (same as financials.py)
+        # Step 1: Fetch payments and orders with metadata conditions (same as financials.py)
         gym_membership_stmt = (
             select(Payment, Order)
             .join(Order, Order.id == Payment.order_id)
             .where(Payment.status == "captured")
             .where(Order.status == "paid")
-            .where(func.date(Payment.captured_at) >= target_month_start)
-            .where(func.date(Payment.captured_at) <= target_month_end)
         )
 
         gym_membership_result = await db.execute(gym_membership_stmt)
-        payments = gym_membership_result.all()
+        all_payments = gym_membership_result.all()
 
-        # Collect order IDs to fetch gym info from order_items (exclude gym_id = 1)
-        order_ids = [row.Order.id for row in payments]
+        if not all_payments:
+            gym_membership_revenue = 0
+        else:
+            # Collect order IDs to fetch gym info and link to memberships
+            order_ids = [row.Order.id for row in all_payments]
 
-        # Fetch order items to get gym_ids (exclude gym_id = 1)
-        order_gym_mapping = {}
-        if order_ids:
+            # Step 2: Fetch order items to get gym_ids and entitlement info
             order_items_stmt = (
                 select(OrderItem)
                 .where(OrderItem.order_id.in_(order_ids))
@@ -291,51 +291,124 @@ async def get_revenue_with_amortization(
             order_items_result = await db.execute(order_items_stmt)
             order_items = order_items_result.scalars().all()
 
-            # Create mapping from order_id to gym_id
+            # Create mapping: order_id -> gym_id
+            order_gym_mapping = {}
+            # Create mapping: order_id -> order_item (for entitlement linking)
+            order_item_mapping = {}
             for item in order_items:
                 if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
                     order_gym_mapping[item.order_id] = int(item.gym_id)
+                    order_item_mapping[item.order_id] = item
 
-        # Filter by metadata conditions and gym_id exclusion
-        for row in payments:
-            payment = row.Payment
-            order = row.Order
+            # Step 3: Fetch entitlements to link payments to FittbotGymMembership
+            # Chain: Payment.order_id -> Order.id -> OrderItem.order_id -> OrderItem.id -> Entitlement.order_item_id
+            order_item_ids = [item.id for item in order_items]
+            entitlement_mapping = {}  # order_item_id -> entitlement
+            if order_item_ids:
+                entitlements_stmt = (
+                    select(Entitlement)
+                    .where(Entitlement.order_item_id.in_(order_item_ids))
+                )
+                entitlements_result = await db.execute(entitlements_stmt)
+                entitlements = entitlements_result.scalars().all()
+                for ent in entitlements:
+                    entitlement_mapping[ent.order_item_id] = ent
 
-            # Check order_metadata for specific conditions (same as Financials/Revenue Analytics)
-            if not order.order_metadata or not isinstance(order.order_metadata, dict):
-                continue
+            # Step 4: Fetch FittbotGymMembership records to get plan_ids
+            # Chain: Entitlement.id -> FittbotGymMembership.entitlement_id
+            entitlement_ids = [ent.id for ent in entitlement_mapping.values()]
+            membership_mapping = {}  # entitlement_id -> FittbotGymMembership
+            if entitlement_ids:
+                memberships_stmt = (
+                    select(FittbotGymMembership)
+                    .where(FittbotGymMembership.entitlement_id.in_(entitlement_ids))
+                )
+                memberships_result = await db.execute(memberships_stmt)
+                memberships = memberships_result.scalars().all()
+                for memb in memberships:
+                    membership_mapping[memb.entitlement_id] = memb
 
-            metadata = order.order_metadata
+            # Step 5: Fetch GymPlans to get durations
+            plan_ids = list({m.plan_id for m in membership_mapping.values() if m.plan_id})
+            plan_duration_mapping = {}  # plan_id -> duration
+            if plan_ids:
+                plans_stmt = (
+                    select(GymPlans)
+                    .where(GymPlans.id.in_(plan_ids))
+                )
+                plans_result = await db.execute(plans_stmt)
+                plans = plans_result.scalars().all()
+                for plan in plans:
+                    plan_duration_mapping[plan.id] = plan.duration or 1
 
-            # Condition 1: audit.source = "dailypass_checkout_api"
-            condition1 = False
-            if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
-                if metadata["audit"].get("source") == "dailypass_checkout_api":
-                    condition1 = True
+            # Step 6: Process each payment and calculate monthly MRR contribution
+            for row in all_payments:
+                payment = row.Payment
+                order = row.Order
 
-            # Condition 2: order_info.flow = "unified_gym_membership_with_sub"
-            condition2 = False
-            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
-                    condition2 = True
+                payment_date = payment.captured_at.date() if payment.captured_at else None
+                if not payment_date:
+                    continue
 
-            # Condition 3: order_info.flow = "unified_gym_membership_with_free_fittbot"
-            condition3 = False
-            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
-                    condition3 = True
+                # Check order_metadata for specific conditions (same as Financials/Revenue Analytics)
+                if not order.order_metadata or not isinstance(order.order_metadata, dict):
+                    continue
 
-            # Only include if any condition matches AND order has valid gym_id (not gym_id = 1)
-            if not (condition1 or condition2 or condition3):
-                continue
+                metadata = order.order_metadata
 
-            if order.id not in order_gym_mapping:
-                continue
+                # Condition 1: audit.source = "dailypass_checkout_api"
+                condition1 = False
+                if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
+                    if metadata["audit"].get("source") == "dailypass_checkout_api":
+                        condition1 = True
 
-            # For MRR, use the amount directly with 1 month amortization (default duration)
-            # Since Orders and FittbotGymMembership are in different schemas and can't be linked
-            amount = order.gross_amount_minor or 0
-            gym_membership_revenue += amount
+                # Condition 2: order_info.flow = "unified_gym_membership_with_sub"
+                condition2 = False
+                if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                    if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
+                        condition2 = True
+
+                # Condition 3: order_info.flow = "unified_gym_membership_with_free_fittbot"
+                condition3 = False
+                if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                    if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                        condition3 = True
+
+                # Only include if any condition matches AND order has valid gym_id (not gym_id = 1)
+                if not (condition1 or condition2 or condition3):
+                    continue
+
+                if order.id not in order_gym_mapping:
+                    continue
+
+                # Get duration from FittbotGymMembership -> GymPlans
+                duration_months = 1  # Default to 1 month if we can't determine duration
+
+                # Try to get duration through: Order -> OrderItem -> Entitlement -> FittbotGymMembership -> GymPlans
+                if order.id in order_item_mapping:
+                    order_item = order_item_mapping[order.id]
+                    if order_item.id in entitlement_mapping:
+                        entitlement = entitlement_mapping[order_item.id]
+                        if entitlement.id in membership_mapping:
+                            membership = membership_mapping[entitlement.id]
+                            if membership.plan_id and membership.plan_id in plan_duration_mapping:
+                                duration_months = plan_duration_mapping[membership.plan_id] or 1
+
+                # Calculate validity period based on duration
+                # Using payment_date as start date (when payment was captured)
+                validity_end_date = (
+                    date(payment_date.year, payment_date.month, 1) +
+                    timedelta(days=32 * duration_months)
+                )
+                validity_end_date = date(validity_end_date.year, validity_end_date.month, 1) - timedelta(days=1)
+
+                # Check if target month overlaps with validity period
+                # Active if: validity_end_date >= target_month_start AND payment_date <= target_month_end
+                if validity_end_date >= target_month_start and payment_date <= target_month_end:
+                    # MRR contribution = amount / duration_months (monthly distribution)
+                    amount = order.gross_amount_minor or 0
+                    monthly_amount = amount / duration_months
+                    gym_membership_revenue += monthly_amount
 
     except Exception as e:
         print(f"[MRR] Error fetching Gym Membership: {e}")
