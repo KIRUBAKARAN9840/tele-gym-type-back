@@ -133,38 +133,82 @@ async def get_revenue_for_month(
     except Exception as e:
         print(f"[CASH_FLOW] Error fetching Fittbot Subscription: {e}")
 
-    # 4. GYM MEMBERSHIP REVENUE
+    # 4. GYM MEMBERSHIP REVENUE - Using same logic as Financials/Revenue Analytics APIs
+    # Query: payments joined with orders
+    # Filters: status = 'captured', order.status = 'paid'
+    # Metadata conditions: audit.source = "dailypass_checkout_api" OR
+    #                      order_info.flow = "unified_gym_membership_with_sub" OR
+    #                      order_info.flow = "unified_gym_membership_with_free_fittbot"
+    # Amount: gross_amount_minor from orders table
+    # Exclusion: gym_id != 1 (from order_items table)
     gym_membership_revenue = 0
     try:
+        # Fetch payments and orders
         gym_membership_stmt = (
-            select(Order.gross_amount_minor, Order.order_metadata)
-            .join(Payment, Payment.order_id == Order.id)
+            select(Payment, Order)
+            .join(Order, Order.id == Payment.order_id)
             .where(Payment.status == "captured")
             .where(Order.status == "paid")
             .where(func.date(Payment.captured_at) >= start_date)
             .where(func.date(Payment.captured_at) <= end_date)
         )
         gym_membership_result = await db.execute(gym_membership_stmt)
-        all_orders = gym_membership_result.all()
+        payments = gym_membership_result.all()
 
-        for order in all_orders:
-            amount = order.gross_amount_minor or 0
-            metadata = order.order_metadata
+        # Collect order IDs to fetch gym info from order_items
+        order_ids = [row.Order.id for row in payments]
 
-            if not metadata or not isinstance(metadata, dict):
+        # Fetch order items to get gym_ids (exclude gym_id = 1)
+        order_gym_mapping = {}
+        if order_ids:
+            from app.fittbot_api.v1.payments.models.orders import OrderItem
+            order_items_stmt = (
+                select(OrderItem)
+                .where(OrderItem.order_id.in_(order_ids))
+                .where(OrderItem.gym_id.isnot(None))
+                .where(OrderItem.gym_id != "1")
+            )
+            order_items_result = await db.execute(order_items_stmt)
+            order_items = order_items_result.scalars().all()
+
+            # Create mapping from order_id to gym_id
+            # When multiple rows exist for same order_id, prefer the one with valid gym_id
+            for item in order_items:
+                if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
+                    order_gym_mapping[item.order_id] = int(item.gym_id)
+
+        # Filter by metadata conditions and gym_id exclusion
+        for row in payments:
+            payment = row.Payment
+            order = row.Order
+
+            # Check order_metadata for specific conditions
+            if not order.order_metadata or not isinstance(order.order_metadata, dict):
                 continue
 
+            metadata = order.order_metadata
+
+            # Condition 1: audit.source = "dailypass_checkout_api"
             condition1 = False
             if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
                 if metadata["audit"].get("source") == "dailypass_checkout_api":
                     condition1 = True
 
+            # Condition 2: order_info.flow = "unified_gym_membership_with_sub"
             condition2 = False
             if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
                 if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
                     condition2 = True
 
-            if condition1 or condition2:
+            # Condition 3: order_info.flow = "unified_gym_membership_with_free_fittbot"
+            condition3 = False
+            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                    condition3 = True
+
+            # Only include if any condition matches AND order has valid gym_id (not gym_id = 1)
+            if (condition1 or condition2 or condition3) and order.id in order_gym_mapping:
+                amount = order.gross_amount_minor or 0
                 gym_membership_revenue += amount
 
     except Exception as e:
