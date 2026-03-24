@@ -324,6 +324,7 @@ async def get_today_schedule(
             .outerjoin(Gym, cast(DailyPassDay.gym_id, Integer) == Gym.gym_id)
             .outerjoin(Payment, DailyPass.payment_id == Payment.provider_payment_id)
             .where(DailyPassDay.scheduled_date == today)
+            .where(DailyPassDay.gym_id != 1)  # Exclude gym_id = 1
         )
 
         # Build SessionBookingDay subquery with type label
@@ -345,6 +346,7 @@ async def get_today_schedule(
             .outerjoin(Client, SessionBookingDay.client_id == Client.client_id)
             .outerjoin(Gym, SessionBookingDay.gym_id == Gym.gym_id)
             .where(SessionBookingDay.booking_date == today)
+            .where(SessionBookingDay.gym_id != 1)  # Exclude gym_id = 1
         )
 
         # Combine both queries with UNION ALL
@@ -454,7 +456,8 @@ async def get_gym_memberships(
     """
     Get all gym memberships with pagination.
     Using same logic as Financials/Revenue Analytics APIs (Order-based approach).
-    Excludes gym_id = 1.
+    Excludes gym_id = 1, rows where client_id is not in clients table,
+    and rows where gym_id is not in gyms table.
     """
     try:
         # Fetch all gym memberships using Order-based approach (same as Financials API)
@@ -566,39 +569,46 @@ async def get_gym_memberships(
             gym_id_str = item["gym_id"]
 
             # Fetch client details (using customer_id from Payment)
-            client_name = "N/A"
-            client_contact = None
-            if order.customer_id:
-                client_stmt = select(Client).where(Client.client_id == int(order.customer_id))
-                client_result = await db.execute(client_stmt)
-                client = client_result.scalar_one_or_none()
-                if client:
-                    client_name = client.name or "N/A"
-                    client_contact = client.contact
+            # Skip row if client not found in clients table
+            if not order.customer_id:
+                continue
+
+            client_stmt = select(Client).where(Client.client_id == int(order.customer_id))
+            client_result = await db.execute(client_stmt)
+            client = client_result.scalar_one_or_none()
+            if not client:
+                # Skip this row if client not found in clients table
+                continue
+
+            client_name = client.name or "N/A"
+            client_contact = client.contact
 
             # Fetch gym details
-            gym_name = "N/A"
-            gym_contact = None
+            # Skip row if gym not found in gyms table
+            if not gym_id_str or not gym_id_str.isdigit():
+                continue
+
+            gym_stmt = select(Gym).where(Gym.gym_id == int(gym_id_str))
+            gym_result = await db.execute(gym_stmt)
+            gym = gym_result.scalar_one_or_none()
+            if not gym:
+                # Skip this row if gym not found in gyms table
+                continue
+
+            gym_name = gym.name or "N/A"
+            gym_contact = gym.contact_number
+            gym_area = gym.area or "N/A"
+
+            # Fetch gym owner details
             owner_name = "N/A"
             owner_contact = None
-            gym_area = "N/A"
-            if gym_id_str and gym_id_str.isdigit():
-                gym_stmt = select(Gym).where(Gym.gym_id == int(gym_id_str))
-                gym_result = await db.execute(gym_stmt)
-                gym = gym_result.scalar_one_or_none()
-                if gym:
-                    gym_name = gym.name or "N/A"
-                    gym_contact = gym.contact_number
-                    gym_area = gym.area or "N/A"
-
-                    # Fetch gym owner details
-                    if gym.owner_id:
-                        owner_stmt = select(GymOwner).where(GymOwner.owner_id == gym.owner_id)
-                        owner_result = await db.execute(owner_stmt)
-                        owner = owner_result.scalar_one_or_none()
-                        if owner:
-                            owner_name = owner.name or "N/A"
-                            owner_contact = owner.contact_number
+            if gym.owner_id:
+                owner_stmt = select(GymOwner).where(GymOwner.owner_id == gym.owner_id)
+                owner_result = await db.execute(owner_stmt)
+                owner = owner_result.scalar_one_or_none()
+                if owner:
+                    owner_name = owner.name or "N/A"
+                    owner_contact = owner.contact_number
 
             memberships.append({
                 "id": order.id,
@@ -887,6 +897,7 @@ async def export_today_schedule(
             .outerjoin(Gym, cast(DailyPassDay.gym_id, Integer) == Gym.gym_id)
             .outerjoin(Payment, DailyPass.payment_id == Payment.provider_payment_id)
             .where(DailyPassDay.scheduled_date == today)
+            .where(DailyPassDay.gym_id != 1)  # Exclude gym_id = 1
         )
 
         # Build SessionBookingDay subquery with type label
@@ -908,6 +919,7 @@ async def export_today_schedule(
             .outerjoin(Client, SessionBookingDay.client_id == Client.client_id)
             .outerjoin(Gym, SessionBookingDay.gym_id == Gym.gym_id)
             .where(SessionBookingDay.booking_date == today)
+            .where(SessionBookingDay.gym_id != 1)  # Exclude gym_id = 1
         )
 
         # Combine both queries with UNION ALL
@@ -1029,7 +1041,8 @@ async def export_gym_memberships(
     Export all gym memberships to Excel file.
     Using same logic as Financials/Revenue Analytics APIs (Order-based approach).
     Returns all memberships (without pagination) for export purposes.
-    Excludes gym_id = 1.
+    Excludes gym_id = 1, rows where client_id is not in clients table,
+    and rows where gym_id is not in gyms table.
     """
     try:
         # Fetch all gym memberships using Order-based approach (same as Financials API)
@@ -1141,28 +1154,36 @@ async def export_gym_memberships(
             gym_id_str = item["gym_id"]
 
             # Fetch client details
-            client_name = "N/A"
-            if order.customer_id:
-                try:
-                    client_stmt = select(Client).where(Client.client_id == int(order.customer_id))
-                    client_result = await db.execute(client_stmt)
-                    client = client_result.scalar_one_or_none()
-                    if client:
-                        client_name = client.name or "N/A"
-                except:
-                    pass
+            # Skip row if client not found in clients table
+            if not order.customer_id:
+                continue
+
+            try:
+                client_stmt = select(Client).where(Client.client_id == int(order.customer_id))
+                client_result = await db.execute(client_stmt)
+                client = client_result.scalar_one_or_none()
+                if not client:
+                    # Skip this row if client not found in clients table
+                    continue
+                client_name = client.name or "N/A"
+            except:
+                continue
 
             # Fetch gym details
-            gym_name = "N/A"
-            if gym_id_str and gym_id_str.isdigit():
-                try:
-                    gym_stmt = select(Gym).where(Gym.gym_id == int(gym_id_str))
-                    gym_result = await db.execute(gym_stmt)
-                    gym = gym_result.scalar_one_or_none()
-                    if gym:
-                        gym_name = gym.name or "N/A"
-                except:
-                    pass
+            # Skip row if gym not found in gyms table
+            if not gym_id_str or not gym_id_str.isdigit():
+                continue
+
+            try:
+                gym_stmt = select(Gym).where(Gym.gym_id == int(gym_id_str))
+                gym_result = await db.execute(gym_stmt)
+                gym = gym_result.scalar_one_or_none()
+                if not gym:
+                    # Skip this row if gym not found in gyms table
+                    continue
+                gym_name = gym.name or "N/A"
+            except:
+                continue
 
             ws.append([
                 client_name,
