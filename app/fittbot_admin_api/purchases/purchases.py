@@ -47,7 +47,8 @@ async def get_all_purchases(
                 GymOwner.contact_number.label("owner_contact"),
                 GymOwner.name.label("owner_name"),
                 Gym.area.label("gym_area"),
-                Client.contact.label("client_contact")
+                Client.contact.label("client_contact"),
+                Client.platform.label("platform")
             )
             .select_from(DailyPass)
             .outerjoin(Client, cast(DailyPass.client_id, Integer) == Client.client_id)
@@ -74,7 +75,8 @@ async def get_all_purchases(
                 GymOwner.contact_number.label("owner_contact"),
                 GymOwner.name.label("owner_name"),
                 Gym.area.label("gym_area"),
-                Client.contact.label("client_contact")
+                Client.contact.label("client_contact"),
+                Client.platform.label("platform")
             )
             .select_from(SessionPurchase)
             .outerjoin(Client, SessionPurchase.client_id == Client.client_id)
@@ -141,7 +143,8 @@ async def get_all_purchases(
                 combined_query.c.owner_contact,
                 combined_query.c.owner_name,
                 combined_query.c.gym_area,
-                combined_query.c.client_contact
+                combined_query.c.client_contact,
+                combined_query.c.platform
             )
             .select_from(combined_query)
             .order_by(combined_query.c.purchased_at.desc())
@@ -247,7 +250,8 @@ async def get_all_purchases(
                 "owner_contact": row.owner_contact or None,
                 "owner_name": row.owner_name or "N/A",
                 "gym_area": row.gym_area or "N/A",
-                "client_contact": row.client_contact or None
+                "client_contact": row.client_contact or None,
+                "platform": row.platform or None
             }
 
             if row.type == "Daily Pass":
@@ -316,6 +320,7 @@ async def get_today_schedule(
                 DailyPass.created_at.label("purchased_at"),
                 Client.name.label("client_name"),
                 Gym.name.label("gym_name"),
+                Client.platform.label("platform"),
                 literal("Daily Pass").label("type"),
             )
             .select_from(DailyPassDay)
@@ -339,6 +344,7 @@ async def get_today_schedule(
                 SessionPurchase.created_at.label("purchased_at"),
                 Client.name.label("client_name"),
                 Gym.name.label("gym_name"),
+                Client.platform.label("platform"),
                 literal("Session").label("type"),
             )
             .select_from(SessionBookingDay)
@@ -387,6 +393,7 @@ async def get_today_schedule(
                 combined_query.c.purchased_at,
                 combined_query.c.client_name,
                 combined_query.c.gym_name,
+                combined_query.c.platform,
                 combined_query.c.type
             )
             .select_from(combined_query)
@@ -410,7 +417,8 @@ async def get_today_schedule(
                 "days_total": row.days_total,
                 "amount": float(row.amount) if row.amount else 0.0,
                 "purchased_at": row.purchased_at,
-                "type": row.type
+                "type": row.type,
+                "platform": row.platform
             }
             for row in rows
         ]
@@ -621,7 +629,8 @@ async def get_gym_memberships(
                 "owner_contact": owner_contact,
                 "owner_name": owner_name,
                 "gym_area": gym_area,
-                "client_contact": client_contact
+                "client_contact": client_contact,
+                "platform": client.platform
             })
 
         total_pages = (total + limit - 1) // limit if total > 0 else 0
@@ -889,6 +898,7 @@ async def export_today_schedule(
                 DailyPass.created_at.label("purchased_at"),
                 Client.name.label("client_name"),
                 Gym.name.label("gym_name"),
+                Client.platform.label("platform"),
                 literal("Daily Pass").label("type"),
             )
             .select_from(DailyPassDay)
@@ -912,6 +922,7 @@ async def export_today_schedule(
                 SessionPurchase.created_at.label("purchased_at"),
                 Client.name.label("client_name"),
                 Gym.name.label("gym_name"),
+                Client.platform.label("platform"),
                 literal("Session").label("type"),
             )
             .select_from(SessionBookingDay)
@@ -967,7 +978,7 @@ async def export_today_schedule(
         ws.title = "Today's Schedule"
 
         # Write header
-        headers = ["Client Name", "Gym Name", "Type", "Scheduled Date", "Status", "Check-in At", "Amount", "Purchased At"]
+        headers = ["Client Name", "Gym Name", "Type", "Scheduled Date", "Status", "Check-in At", "Amount", "Purchased At", "Platform"]
         ws.append(headers)
 
         # Style the header row
@@ -988,7 +999,8 @@ async def export_today_schedule(
                 row.day_status or "N/A",
                 format_datetime(row.checkin_at),
                 format_amount(row.amount),
-                format_datetime(row.purchased_at)
+                format_datetime(row.purchased_at),
+                (row.platform or "N/A").capitalize() if row.platform else "N/A"
             ])
 
         # Auto-adjust column widths
@@ -1137,7 +1149,7 @@ async def export_gym_memberships(
         ws.title = "Gym Memberships"
 
         # Write header
-        headers = ["Client Name", "Gym Name", "Type", "Amount", "Purchased At"]
+        headers = ["Client Name", "Gym Name", "Type", "Amount", "Purchased At", "Platform"]
         ws.append(headers)
 
         # Style the header row
@@ -1166,6 +1178,7 @@ async def export_gym_memberships(
                     # Skip this row if client not found in clients table
                     continue
                 client_name = client.name or "N/A"
+                client_platform = client.platform or "N/A"
             except:
                 continue
 
@@ -1190,7 +1203,8 @@ async def export_gym_memberships(
                 gym_name,
                 "Gym Membership",
                 format_amount((order.gross_amount_minor / 100) if order.gross_amount_minor else 0),
-                format_date(order.created_at)
+                format_date(order.created_at),
+                client_platform
             ])
 
         # Auto-adjust column widths
