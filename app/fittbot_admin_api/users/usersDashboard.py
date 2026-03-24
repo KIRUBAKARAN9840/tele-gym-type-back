@@ -2369,8 +2369,14 @@ async def get_user_gym_membership(
                 if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
                     condition2 = True
 
-            # Only include if either condition matches
-            if not (condition1 or condition2):
+            # Condition 3: order_info.flow = "unified_gym_membership_with_free_fittbot"
+            condition3 = False
+            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                    condition3 = True
+
+            # Only include if any condition matches
+            if not (condition1 or condition2 or condition3):
                 continue
 
             # print(f"[GYM_MEMBERSHIP_API] Including order {order.id} - condition1: {condition1}, condition2: {condition2}")
