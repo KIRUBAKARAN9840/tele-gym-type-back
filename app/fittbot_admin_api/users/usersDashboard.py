@@ -737,7 +737,21 @@ async def get_active_clients(
         active_counts_result = await db.execute(active_counts_stmt)
         total_active_count = active_counts_result.scalar() or 0
 
-        # Build base query for fetching clients
+        # Get active client client_ids first (same query as SQL count, but returning IDs)
+        active_ids_stmt = select(
+            latest_membership_subquery.c.client_id
+        ).where(
+            and_(
+                latest_membership_subquery.c.rn == 1,
+                latest_membership_subquery.c.expires_at > func.current_date(),
+                latest_membership_subquery.c.type != 'imported'
+            )
+        )
+
+        active_ids_result = await db.execute(active_ids_stmt)
+        active_client_ids_list = [str(row[0]) for row in active_ids_result.all()]
+
+        # Build base query for fetching clients - filter by active client IDs
         clients_stmt = select(
             Client.client_id,
             Client.name,
@@ -749,7 +763,8 @@ async def get_active_clients(
         ).where(
             and_(
                 Client.client_id.isnot(None),
-                Client.gym_id.isnot(None)
+                Client.gym_id.isnot(None),
+                func.cast(Client.client_id, String).in_(active_client_ids_list)
             )
         )
 
@@ -770,53 +785,15 @@ async def get_active_clients(
         else:
             clients_stmt = clients_stmt.order_by(desc(Client.created_at))
 
-        # Execute query
+        # Get total count (after search filter, if any)
+        count_stmt = select(func.count()).select_from(clients_stmt.subquery())
+        count_result = await db.execute(count_stmt)
+        filtered_count = count_result.scalar() or 0
+
+        # Apply pagination and execute query
+        clients_stmt = clients_stmt.offset(offset).limit(limit)
         clients_result = await db.execute(clients_stmt)
-        all_clients = clients_result.all()
-
-        # Get active client IDs using SQL-based logic
-        active_client_ids = set()
-
-        # Get all memberships for these clients
-        client_ids_list = [str(c.client_id) for c in all_clients]
-
-        if client_ids_list:
-            memberships_stmt = select(
-                FittbotGymMembership.client_id,
-                FittbotGymMembership.expires_at,
-                FittbotGymMembership.type,
-                func.row_number().over(
-                    partition_by=FittbotGymMembership.client_id,
-                    order_by=FittbotGymMembership.id.desc()
-                ).label('rn')
-            ).where(
-                and_(
-                    FittbotGymMembership.client_id.in_(client_ids_list),
-                    FittbotGymMembership.gym_id.isnot(None)
-                )
-            )
-
-            memberships_result = await db.execute(memberships_stmt)
-            all_memberships = memberships_result.all()
-
-            # Filter using SQL logic: expires_at > current_date() AND type != 'imported'
-            for membership in all_memberships:
-                if membership.rn == 1:  # Only latest membership
-                    if (membership.expires_at and membership.expires_at > now.date() and
-                        membership.type != 'imported'):
-                        active_client_ids.add(str(membership.client_id))
-
-        # Filter clients who are active
-        active_clients_data = []
-        for client in all_clients:
-            if str(client.client_id) in active_client_ids:
-                active_clients_data.append(client)
-
-        # Get total count before pagination (using SQL count for accuracy)
-        total_count = total_active_count
-
-        # Apply pagination
-        paginated_clients = active_clients_data[offset:offset + limit]
+        paginated_clients = clients_result.all()
 
         # Fetch gym names and last purchase dates
         client_ids = [c.client_id for c in paginated_clients]
@@ -885,7 +862,7 @@ async def get_active_clients(
             "success": True,
             "data": {
                 "clients": clients_list,
-                "total": total_count,
+                "total": filtered_count,
                 "page": page,
                 "limit": limit
             }
@@ -952,7 +929,24 @@ async def get_inactive_clients(
         active_clients_count = counts_row.active_clients or 0
         inactive_clients_count = total_clients_count - active_clients_count
 
-        # Build base query for fetching clients
+        # Get inactive client client_ids first (same query as SQL count, but returning IDs)
+        # Inactive: expires_at <= current_date() OR type = 'imported'
+        inactive_ids_stmt = select(
+            latest_membership_subquery.c.client_id
+        ).where(
+            and_(
+                latest_membership_subquery.c.rn == 1,
+                or_(
+                    latest_membership_subquery.c.expires_at <= func.current_date(),
+                    latest_membership_subquery.c.type == 'imported'
+                )
+            )
+        )
+
+        inactive_ids_result = await db.execute(inactive_ids_stmt)
+        inactive_client_ids_list = [str(row[0]) for row in inactive_ids_result.all()]
+
+        # Build base query for fetching clients - filter by inactive client IDs
         clients_stmt = select(
             Client.client_id,
             Client.name,
@@ -964,7 +958,8 @@ async def get_inactive_clients(
         ).where(
             and_(
                 Client.client_id.isnot(None),
-                Client.gym_id.isnot(None)
+                Client.gym_id.isnot(None),
+                func.cast(Client.client_id, String).in_(inactive_client_ids_list)
             )
         )
 
@@ -985,54 +980,15 @@ async def get_inactive_clients(
         else:
             clients_stmt = clients_stmt.order_by(desc(Client.created_at))
 
-        # Execute query
+        # Get total count (after search filter, if any)
+        count_stmt = select(func.count()).select_from(clients_stmt.subquery())
+        count_result = await db.execute(count_stmt)
+        filtered_count = count_result.scalar() or 0
+
+        # Apply pagination and execute query
+        clients_stmt = clients_stmt.offset(offset).limit(limit)
         clients_result = await db.execute(clients_stmt)
-        all_clients = clients_result.all()
-
-        # Get inactive client IDs using SQL-based logic
-        inactive_client_ids = set()
-
-        # Get all memberships for these clients
-        client_ids_list = [str(c.client_id) for c in all_clients]
-
-        if client_ids_list:
-            memberships_stmt = select(
-                FittbotGymMembership.client_id,
-                FittbotGymMembership.expires_at,
-                FittbotGymMembership.type,
-                func.row_number().over(
-                    partition_by=FittbotGymMembership.client_id,
-                    order_by=FittbotGymMembership.id.desc()
-                ).label('rn')
-            ).where(
-                and_(
-                    FittbotGymMembership.client_id.in_(client_ids_list),
-                    FittbotGymMembership.gym_id.isnot(None)
-                )
-            )
-
-            memberships_result = await db.execute(memberships_stmt)
-            all_memberships = memberships_result.all()
-
-            # Filter using SQL logic: expires_at <= current_date() OR type = 'imported'
-            for membership in all_memberships:
-                if membership.rn == 1:  # Only latest membership
-                    is_expired = not membership.expires_at or membership.expires_at <= now.date()
-                    is_imported = membership.type == 'imported'
-                    if is_expired or is_imported:
-                        inactive_client_ids.add(str(membership.client_id))
-
-        # Filter clients who are inactive
-        inactive_clients_data = []
-        for client in all_clients:
-            if str(client.client_id) in inactive_client_ids:
-                inactive_clients_data.append(client)
-
-        # Get total count before pagination (using SQL count for accuracy)
-        total_count = inactive_clients_count
-
-        # Apply pagination
-        paginated_clients = inactive_clients_data[offset:offset + limit]
+        paginated_clients = clients_result.all()
 
         # Fetch gym names and last purchase dates
         client_ids = [c.client_id for c in paginated_clients]
@@ -1101,7 +1057,7 @@ async def get_inactive_clients(
             "success": True,
             "data": {
                 "clients": clients_list,
-                "total": total_count,
+                "total": filtered_count,
                 "page": page,
                 "limit": limit
             }
@@ -1159,7 +1115,20 @@ async def get_online_members(
         online_counts_result = await db.execute(online_counts_stmt)
         total_online_count = online_counts_result.scalar() or 0
 
-        # Build base query for fetching clients
+        # Get online member client_ids first (same query as SQL count, but returning IDs)
+        online_ids_stmt = select(
+            latest_membership_subquery.c.client_id
+        ).where(
+            and_(
+                latest_membership_subquery.c.rn == 1,
+                latest_membership_subquery.c.type.notin_(['normal', 'admission_fees'])
+            )
+        )
+
+        online_ids_result = await db.execute(online_ids_stmt)
+        online_member_ids_list = [str(row[0]) for row in online_ids_result.all()]
+
+        # Build base query for fetching clients - filter by online member IDs
         clients_stmt = select(
             Client.client_id,
             Client.name,
@@ -1171,7 +1140,8 @@ async def get_online_members(
         ).where(
             and_(
                 Client.client_id.isnot(None),
-                Client.gym_id.isnot(None)
+                Client.gym_id.isnot(None),
+                func.cast(Client.client_id, String).in_(online_member_ids_list)
             )
         )
 
@@ -1192,52 +1162,15 @@ async def get_online_members(
         else:
             clients_stmt = clients_stmt.order_by(desc(Client.created_at))
 
-        # Execute query
+        # Get total count (after search filter, if any)
+        count_stmt = select(func.count()).select_from(clients_stmt.subquery())
+        count_result = await db.execute(count_stmt)
+        filtered_count = count_result.scalar() or 0
+
+        # Apply pagination and execute query
+        clients_stmt = clients_stmt.offset(offset).limit(limit)
         clients_result = await db.execute(clients_stmt)
-        all_clients = clients_result.all()
-
-        # Get online member IDs using SQL-based logic
-        online_member_ids = set()
-
-        # Get all memberships for these clients
-        client_ids_list = [str(c.client_id) for c in all_clients]
-
-        if client_ids_list:
-            memberships_stmt = select(
-                FittbotGymMembership.client_id,
-                FittbotGymMembership.type,
-                func.row_number().over(
-                    partition_by=FittbotGymMembership.client_id,
-                    order_by=FittbotGymMembership.id.desc()
-                ).label('rn')
-            ).where(
-                and_(
-                    FittbotGymMembership.client_id.in_(client_ids_list),
-                    FittbotGymMembership.gym_id.isnot(None)
-                )
-            )
-
-            memberships_result = await db.execute(memberships_stmt)
-            all_memberships = memberships_result.all()
-
-            # Filter using SQL logic: type NOT IN ('normal', 'admission_fees')
-            for membership in all_memberships:
-                if membership.rn == 1:  # Only latest membership
-                    membership_type = (membership.type or "").lower()
-                    if membership_type not in ['normal', 'admission_fees']:
-                        online_member_ids.add(str(membership.client_id))
-
-        # Filter clients who are online
-        online_clients_data = []
-        for client in all_clients:
-            if str(client.client_id) in online_member_ids:
-                online_clients_data.append(client)
-
-        # Get total count before pagination (using SQL count for accuracy)
-        total_count = total_online_count
-
-        # Apply pagination
-        paginated_clients = online_clients_data[offset:offset + limit]
+        paginated_clients = clients_result.all()
 
         # Fetch gym names and last purchase dates
         client_ids = [c.client_id for c in paginated_clients]
@@ -1306,7 +1239,7 @@ async def get_online_members(
             "success": True,
             "data": {
                 "clients": clients_list,
-                "total": total_count,
+                "total": filtered_count,
                 "page": page,
                 "limit": limit
             }
@@ -1364,7 +1297,20 @@ async def get_offline_members(
         offline_counts_result = await db.execute(offline_counts_stmt)
         total_offline_count = offline_counts_result.scalar() or 0
 
-        # Build base query for fetching clients
+        # Get offline member client_ids first (same query as SQL count, but returning IDs)
+        offline_ids_stmt = select(
+            latest_membership_subquery.c.client_id
+        ).where(
+            and_(
+                latest_membership_subquery.c.rn == 1,
+                latest_membership_subquery.c.type.in_(['normal', 'admission_fees'])
+            )
+        )
+
+        offline_ids_result = await db.execute(offline_ids_stmt)
+        offline_member_ids_list = [str(row[0]) for row in offline_ids_result.all()]
+
+        # Build base query for fetching clients - filter by offline member IDs
         clients_stmt = select(
             Client.client_id,
             Client.name,
@@ -1376,7 +1322,8 @@ async def get_offline_members(
         ).where(
             and_(
                 Client.client_id.isnot(None),
-                Client.gym_id.isnot(None)
+                Client.gym_id.isnot(None),
+                func.cast(Client.client_id, String).in_(offline_member_ids_list)
             )
         )
 
@@ -1397,52 +1344,15 @@ async def get_offline_members(
         else:
             clients_stmt = clients_stmt.order_by(desc(Client.created_at))
 
-        # Execute query
+        # Get total count (after search filter, if any)
+        count_stmt = select(func.count()).select_from(clients_stmt.subquery())
+        count_result = await db.execute(count_stmt)
+        filtered_count = count_result.scalar() or 0
+
+        # Apply pagination and execute query
+        clients_stmt = clients_stmt.offset(offset).limit(limit)
         clients_result = await db.execute(clients_stmt)
-        all_clients = clients_result.all()
-
-        # Get offline member IDs using SQL-based logic
-        offline_member_ids = set()
-
-        # Get all memberships for these clients
-        client_ids_list = [str(c.client_id) for c in all_clients]
-
-        if client_ids_list:
-            memberships_stmt = select(
-                FittbotGymMembership.client_id,
-                FittbotGymMembership.type,
-                func.row_number().over(
-                    partition_by=FittbotGymMembership.client_id,
-                    order_by=FittbotGymMembership.id.desc()
-                ).label('rn')
-            ).where(
-                and_(
-                    FittbotGymMembership.client_id.in_(client_ids_list),
-                    FittbotGymMembership.gym_id.isnot(None)
-                )
-            )
-
-            memberships_result = await db.execute(memberships_stmt)
-            all_memberships = memberships_result.all()
-
-            # Filter using SQL logic: type IN ('normal', 'admission_fees')
-            for membership in all_memberships:
-                if membership.rn == 1:  # Only latest membership
-                    membership_type = (membership.type or "").lower()
-                    if membership_type in ['normal', 'admission_fees']:
-                        offline_member_ids.add(str(membership.client_id))
-
-        # Filter clients who are offline
-        offline_clients_data = []
-        for client in all_clients:
-            if str(client.client_id) in offline_member_ids:
-                offline_clients_data.append(client)
-
-        # Get total count before pagination (using SQL count for accuracy)
-        total_count = total_offline_count
-
-        # Apply pagination
-        paginated_clients = offline_clients_data[offset:offset + limit]
+        paginated_clients = clients_result.all()
 
         # Fetch gym names and last purchase dates
         client_ids = [c.client_id for c in paginated_clients]
@@ -1511,7 +1421,7 @@ async def get_offline_members(
             "success": True,
             "data": {
                 "clients": clients_list,
-                "total": total_count,
+                "total": filtered_count,
                 "page": page,
                 "limit": limit
             }
@@ -1550,7 +1460,7 @@ async def get_users_overview(
             {"id": 3, "plan_name": "Diamond"}
         ]
 
-    
+        # Create latest membership subquery (same as individual pages)
         latest_membership_subquery = select(
             FittbotGymMembership.client_id,
             FittbotGymMembership.type,
@@ -1567,42 +1477,138 @@ async def get_users_overview(
             )
         ).subquery('latest_membership')
 
-        counts_stmt = select(
-            func.count().label('total_clients'),
-            func.sum(case(
-                (and_(
-                    latest_membership_subquery.c.expires_at > func.current_date(),
-                    latest_membership_subquery.c.type != 'imported'
-                ), 1),
-                else_=0
-            )).label('active_clients'),
-            func.sum(case(
-                (latest_membership_subquery.c.type.in_(['normal', 'admission_fees']), 1),
-                else_=0
-            )).label('offline_members')
+        # Get ONLINE member IDs first (same as /online-members page)
+        online_ids_stmt = select(
+            latest_membership_subquery.c.client_id
         ).where(
-            latest_membership_subquery.c.rn == 1
+            and_(
+                latest_membership_subquery.c.rn == 1,
+                latest_membership_subquery.c.type.notin_(['normal', 'admission_fees'])
+            )
         )
+        online_ids_result = await db.execute(online_ids_stmt)
+        online_ids_list = [str(row[0]) for row in online_ids_result.all()]
 
-        counts_result = await db.execute(counts_stmt)
-        counts_row = counts_result.first()
+        # Get OFFLINE member IDs first (same as /offline-members page)
+        offline_ids_stmt = select(
+            latest_membership_subquery.c.client_id
+        ).where(
+            and_(
+                latest_membership_subquery.c.rn == 1,
+                latest_membership_subquery.c.type.in_(['normal', 'admission_fees'])
+            )
+        )
+        offline_ids_result = await db.execute(offline_ids_stmt)
+        offline_ids_list = [str(row[0]) for row in offline_ids_result.all()]
 
-        total_clients = counts_row.total_clients or 0
-        active_clients_count = counts_row.active_clients or 0
-        inactive_clients_count = total_clients - active_clients_count
-        offline_members_count = counts_row.offline_members or 0
-        online_members_count = total_clients - offline_members_count
+        # Get ACTIVE client IDs first (same as /active-clients page)
+        active_ids_stmt = select(
+            latest_membership_subquery.c.client_id
+        ).where(
+            and_(
+                latest_membership_subquery.c.rn == 1,
+                latest_membership_subquery.c.expires_at > func.current_date(),
+                latest_membership_subquery.c.type != 'imported'
+            )
+        )
+        active_ids_result = await db.execute(active_ids_stmt)
+        active_ids_list = [str(row[0]) for row in active_ids_result.all()]
 
+        # Get INACTIVE client IDs first (same as /inactive-clients page)
+        inactive_ids_stmt = select(
+            latest_membership_subquery.c.client_id
+        ).where(
+            and_(
+                latest_membership_subquery.c.rn == 1,
+                or_(
+                    latest_membership_subquery.c.expires_at <= func.current_date(),
+                    latest_membership_subquery.c.type == 'imported'
+                )
+            )
+        )
+        inactive_ids_result = await db.execute(inactive_ids_stmt)
+        inactive_ids_list = [str(row[0]) for row in inactive_ids_result.all()]
+
+        # Count clients that exist in Client table (same as individual pages)
+        # Online members count
+        online_members_count = 0
+        if online_ids_list:
+            online_count_stmt = select(func.count()).select_from(
+                select(Client.client_id).where(
+                    and_(
+                        Client.client_id.isnot(None),
+                        Client.gym_id.isnot(None),
+                        func.cast(Client.client_id, String).in_(online_ids_list)
+                    )
+                ).subquery()
+            )
+            online_count_result = await db.execute(online_count_stmt)
+            online_members_count = online_count_result.scalar() or 0
+
+        # Offline members count
+        offline_members_count = 0
+        if offline_ids_list:
+            offline_count_stmt = select(func.count()).select_from(
+                select(Client.client_id).where(
+                    and_(
+                        Client.client_id.isnot(None),
+                        Client.gym_id.isnot(None),
+                        func.cast(Client.client_id, String).in_(offline_ids_list)
+                    )
+                ).subquery()
+            )
+            offline_count_result = await db.execute(offline_count_stmt)
+            offline_members_count = offline_count_result.scalar() or 0
+
+        # Active clients count
+        active_clients_count = 0
+        if active_ids_list:
+            active_count_stmt = select(func.count()).select_from(
+                select(Client.client_id).where(
+                    and_(
+                        Client.client_id.isnot(None),
+                        Client.gym_id.isnot(None),
+                        func.cast(Client.client_id, String).in_(active_ids_list)
+                    )
+                ).subquery()
+            )
+            active_count_result = await db.execute(active_count_stmt)
+            active_clients_count = active_count_result.scalar() or 0
+
+        # Inactive clients count
+        inactive_clients_count = 0
+        if inactive_ids_list:
+            inactive_count_stmt = select(func.count()).select_from(
+                select(Client.client_id).where(
+                    and_(
+                        Client.client_id.isnot(None),
+                        Client.gym_id.isnot(None),
+                        func.cast(Client.client_id, String).in_(inactive_ids_list)
+                    )
+                ).subquery()
+            )
+            inactive_count_result = await db.execute(inactive_count_stmt)
+            inactive_clients_count = inactive_count_result.scalar() or 0
+
+        total_all_clients = active_clients_count + inactive_clients_count
+
+        # Each card shows its own count as "total" (matching individual pages)
         client_counts_data = {
             "active_clients": active_clients_count,
             "inactive_clients": inactive_clients_count,
-            "total_clients": total_clients
+            "total_clients": total_all_clients,  # Overall total
+            # Individual page totals (for cards to use)
+            "active_clients_total": active_clients_count,  # Shows in active-clients card
+            "inactive_clients_total": inactive_clients_count  # Shows in inactive-clients card
         }
 
         online_offline_counts_data = {
             "online_members": online_members_count,
             "offline_members": offline_members_count,
-            "total_members": total_clients
+            "total_members": total_all_clients,  # Overall total
+            # Individual page totals (for cards to use)
+            "online_members_total": online_members_count,  # Shows in online-members card
+            "offline_members_total": offline_members_count  # Shows in offline-members card
         }
 
         # 4. Get paginated users with all filters
