@@ -14,6 +14,7 @@ from app.models.fittbot_models import Client, Gym, GymOwner, SessionPurchase, Se
 from app.models.async_database import get_async_db
 from app.models.dailypass_models import DailyPass, DailyPassDay
 from app.fittbot_api.v1.payments.models.payments import Payment
+from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
 
 router = APIRouter(prefix="/api/admin/purchases", tags=["AdminPurchases"])
 
@@ -451,20 +452,88 @@ async def get_gym_memberships(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Get all gym memberships and personal training memberships with pagination.
-    Filters records where type is 'gym_membership' or 'personal_training'.
+    Get all gym memberships with pagination.
+    Using same logic as Financials/Revenue Analytics APIs (Order-based approach).
+    Excludes gym_id = 1.
     """
     try:
-        # Build base query for counting
-        count_query = (
-            select(func.count())
-            .select_from(FittbotGymMembership)
-            .where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
+        # Fetch all gym memberships using Order-based approach (same as Financials API)
+        gym_membership_stmt = (
+            select(Payment, Order)
+            .join(Order, Order.id == Payment.order_id)
+            .where(Payment.status == "captured")
+            .where(Order.status == "paid")
         )
+        gym_membership_result = await db.execute(gym_membership_stmt)
+        all_payments = gym_membership_result.all()
 
-        # Get total count
-        count_result = await db.execute(count_query)
-        total = count_result.scalar() or 0
+        # Collect order IDs to fetch gym info from order_items (exclude gym_id = 1)
+        order_ids = [row.Order.id for row in all_payments]
+
+        # Fetch order items to get gym_ids (exclude gym_id = 1)
+        order_gym_mapping = {}
+        order_gym_id_mapping = {}  # Store actual gym_id values
+        if order_ids:
+            order_items_stmt = (
+                select(OrderItem)
+                .where(OrderItem.order_id.in_(order_ids))
+                .where(OrderItem.gym_id.isnot(None))
+                .where(OrderItem.gym_id != "1")
+            )
+            order_items_result = await db.execute(order_items_stmt)
+            order_items = order_items_result.scalars().all()
+
+            # Create mapping from order_id to gym_id
+            for item in order_items:
+                if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
+                    order_gym_mapping[item.order_id] = int(item.gym_id)
+                    order_gym_id_mapping[item.order_id] = item.gym_id
+
+        # Filter by metadata conditions and collect valid orders
+        valid_orders = []
+        for row in all_payments:
+            payment = row.Payment
+            order = row.Order
+
+            # Check order_metadata for specific conditions (same as Financials/Revenue Analytics)
+            if not order.order_metadata or not isinstance(order.order_metadata, dict):
+                continue
+
+            metadata = order.order_metadata
+
+            # Condition 1: audit.source = "dailypass_checkout_api"
+            condition1 = False
+            if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
+                if metadata["audit"].get("source") == "dailypass_checkout_api":
+                    condition1 = True
+
+            # Condition 2: order_info.flow = "unified_gym_membership_with_sub"
+            condition2 = False
+            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
+                    condition2 = True
+
+            # Condition 3: order_info.flow = "unified_gym_membership_with_free_fittbot"
+            condition3 = False
+            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                    condition3 = True
+
+            # Only include if any condition matches AND order has valid gym_id (not gym_id = 1)
+            if not (condition1 or condition2 or condition3):
+                continue
+
+            if order.id not in order_gym_mapping:
+                continue
+
+            valid_orders.append({
+                "order": order,
+                "payment": payment,
+                "gym_id": order_gym_id_mapping[order.id]
+            })
+
+        # Get total count for pagination
+        total = len(valid_orders)
 
         # Early return if no results
         if total == 0:
@@ -483,52 +552,67 @@ async def get_gym_memberships(
                 }
             }
 
-        # Build main query with pagination
-        query = (
-            select(
-                FittbotGymMembership.id,
-                FittbotGymMembership.type,
-                FittbotGymMembership.amount,
-                FittbotGymMembership.purchased_at,
-                Client.name.label("client_name"),
-                Gym.name.label("gym_name"),
-                Gym.contact_number.label("gym_contact"),
-                GymOwner.contact_number.label("owner_contact"),
-                GymOwner.name.label("owner_name"),
-                Gym.area.label("gym_area"),
-                Client.contact.label("client_contact")
-            )
-            .select_from(FittbotGymMembership)
-            .outerjoin(Client, cast(FittbotGymMembership.client_id, Integer) == Client.client_id)
-            .outerjoin(Gym, cast(FittbotGymMembership.gym_id, Integer) == Gym.gym_id)
-            .outerjoin(GymOwner, Gym.owner_id == GymOwner.owner_id)
-            .where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
-            .order_by(FittbotGymMembership.purchased_at.desc())
-            .offset((page - 1) * limit)
-            .limit(limit)
-        )
+        # Sort by purchased_at descending and apply pagination
+        valid_orders.sort(key=lambda x: x["order"].created_at, reverse=True)
 
-        result = await db.execute(query)
-        rows = result.all()
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        paginated_orders = valid_orders[start_idx:end_idx]
 
-        # Format response
-        memberships = [
-            {
-                "id": row.id,
-                "client_name": row.client_name or "N/A",
-                "gym_name": row.gym_name or "N/A",
-                "type": row.type,
-                "amount": float(row.amount) if row.amount else 0.0,
-                "purchased_at": row.purchased_at,
-                "gym_contact": row.gym_contact or None,
-                "owner_contact": row.owner_contact or None,
-                "owner_name": row.owner_name or "N/A",
-                "gym_area": row.gym_area or "N/A",
-                "client_contact": row.client_contact or None
-            }
-            for row in rows
-        ]
+        # Fetch additional details (Client, Gym, GymOwner) for paginated orders
+        memberships = []
+        for item in paginated_orders:
+            order = item["order"]
+            gym_id_str = item["gym_id"]
 
+            # Fetch client details (using customer_id from Payment)
+            client_name = "N/A"
+            client_contact = None
+            if order.customer_id:
+                client_stmt = select(Client).where(Client.client_id == int(order.customer_id))
+                client_result = await db.execute(client_stmt)
+                client = client_result.scalar_one_or_none()
+                if client:
+                    client_name = client.name or "N/A"
+                    client_contact = client.contact
+
+            # Fetch gym details
+            gym_name = "N/A"
+            gym_contact = None
+            owner_name = "N/A"
+            owner_contact = None
+            gym_area = "N/A"
+            if gym_id_str and gym_id_str.isdigit():
+                gym_stmt = select(Gym).where(Gym.gym_id == int(gym_id_str))
+                gym_result = await db.execute(gym_stmt)
+                gym = gym_result.scalar_one_or_none()
+                if gym:
+                    gym_name = gym.name or "N/A"
+                    gym_contact = gym.contact_number
+                    gym_area = gym.area or "N/A"
+
+                    # Fetch gym owner details
+                    if gym.owner_id:
+                        owner_stmt = select(GymOwner).where(GymOwner.owner_id == gym.owner_id)
+                        owner_result = await db.execute(owner_stmt)
+                        owner = owner_result.scalar_one_or_none()
+                        if owner:
+                            owner_name = owner.name or "N/A"
+                            owner_contact = owner.contact_number
+
+            memberships.append({
+                "id": order.id,
+                "client_name": client_name,
+                "gym_name": gym_name,
+                "type": "gym_membership",
+                "amount": float(order.gross_amount_minor / 100) if order.gross_amount_minor else 0.0,
+                "purchased_at": order.created_at,
+                "gym_contact": gym_contact,
+                "owner_contact": owner_contact,
+                "owner_name": owner_name,
+                "gym_area": gym_area,
+                "client_contact": client_contact
+            })
 
         total_pages = (total + limit - 1) // limit if total > 0 else 0
         has_next = page < total_pages
@@ -554,6 +638,8 @@ async def get_gym_memberships(
     except Exception as e:
         import logging
         logging.error(f"Error in get_gym_memberships: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail="An error occurred while fetching gym memberships"
@@ -940,45 +1026,90 @@ async def export_gym_memberships(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Export all gym memberships and personal training memberships to Excel file.
+    Export all gym memberships to Excel file.
+    Using same logic as Financials/Revenue Analytics APIs (Order-based approach).
     Returns all memberships (without pagination) for export purposes.
+    Excludes gym_id = 1.
     """
     try:
-        # Build main query without pagination
-        query = (
-            select(
-                FittbotGymMembership.id,
-                FittbotGymMembership.type,
-                FittbotGymMembership.amount,
-                FittbotGymMembership.purchased_at,
-                Client.name.label("client_name"),
-                Gym.name.label("gym_name"),
-                Gym.contact_number.label("gym_contact"),
-                GymOwner.contact_number.label("owner_contact"),
-                GymOwner.name.label("owner_name"),
-                Gym.area.label("gym_area"),
-                Client.contact.label("client_contact")
-            )
-            .select_from(FittbotGymMembership)
-            .outerjoin(Client, cast(FittbotGymMembership.client_id, Integer) == Client.client_id)
-            .outerjoin(Gym, cast(FittbotGymMembership.gym_id, Integer) == Gym.gym_id)
-            .outerjoin(GymOwner, Gym.owner_id == GymOwner.owner_id)
-            .where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
-            .order_by(FittbotGymMembership.purchased_at.desc())
+        # Fetch all gym memberships using Order-based approach (same as Financials API)
+        gym_membership_stmt = (
+            select(Payment, Order)
+            .join(Order, Order.id == Payment.order_id)
+            .where(Payment.status == "captured")
+            .where(Order.status == "paid")
         )
+        gym_membership_result = await db.execute(gym_membership_stmt)
+        all_payments = gym_membership_result.all()
 
-        # Execute query
-        result = await db.execute(query)
-        rows = result.all()
+        # Collect order IDs to fetch gym info from order_items (exclude gym_id = 1)
+        order_ids = [row.Order.id for row in all_payments]
+
+        # Fetch order items to get gym_ids (exclude gym_id = 1)
+        order_gym_mapping = {}
+        order_gym_id_mapping = {}  # Store actual gym_id values
+        if order_ids:
+            order_items_stmt = (
+                select(OrderItem)
+                .where(OrderItem.order_id.in_(order_ids))
+                .where(OrderItem.gym_id.isnot(None))
+                .where(OrderItem.gym_id != "1")
+            )
+            order_items_result = await db.execute(order_items_stmt)
+            order_items = order_items_result.scalars().all()
+
+            # Create mapping from order_id to gym_id
+            for item in order_items:
+                if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
+                    order_gym_mapping[item.order_id] = int(item.gym_id)
+                    order_gym_id_mapping[item.order_id] = item.gym_id
+
+        # Filter by metadata conditions and collect valid orders
+        valid_orders = []
+        for row in all_payments:
+            payment = row.Payment
+            order = row.Order
+
+            # Check order_metadata for specific conditions (same as Financials/Revenue Analytics)
+            if not order.order_metadata or not isinstance(order.order_metadata, dict):
+                continue
+
+            metadata = order.order_metadata
+
+            # Condition 1: audit.source = "dailypass_checkout_api"
+            condition1 = False
+            if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
+                if metadata["audit"].get("source") == "dailypass_checkout_api":
+                    condition1 = True
+
+            # Condition 2: order_info.flow = "unified_gym_membership_with_sub"
+            condition2 = False
+            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
+                    condition2 = True
+
+            # Condition 3: order_info.flow = "unified_gym_membership_with_free_fittbot"
+            condition3 = False
+            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                    condition3 = True
+
+            # Only include if any condition matches AND order has valid gym_id (not gym_id = 1)
+            if not (condition1 or condition2 or condition3):
+                continue
+
+            if order.id not in order_gym_mapping:
+                continue
+
+            valid_orders.append({
+                "order": order,
+                "gym_id": order_gym_id_mapping[order.id]
+            })
+
+        # Sort by purchased_at descending
+        valid_orders.sort(key=lambda x: x["order"].created_at, reverse=True)
 
         # Format functions
-        def format_type(type_str):
-            if type_str == "gym_membership":
-                return "Gym Membership"
-            elif type_str == "personal_training":
-                return "Personal Training"
-            return type_str or "N/A"
-
         def format_date(date_obj):
             if date_obj:
                 return date_obj.strftime("%d-%b-%Y")
@@ -1005,13 +1136,40 @@ async def export_gym_memberships(
             cell.fill = header_fill
 
         # Write data rows
-        for row in rows:
+        for item in valid_orders:
+            order = item["order"]
+            gym_id_str = item["gym_id"]
+
+            # Fetch client details
+            client_name = "N/A"
+            if order.customer_id:
+                try:
+                    client_stmt = select(Client).where(Client.client_id == int(order.customer_id))
+                    client_result = await db.execute(client_stmt)
+                    client = client_result.scalar_one_or_none()
+                    if client:
+                        client_name = client.name or "N/A"
+                except:
+                    pass
+
+            # Fetch gym details
+            gym_name = "N/A"
+            if gym_id_str and gym_id_str.isdigit():
+                try:
+                    gym_stmt = select(Gym).where(Gym.gym_id == int(gym_id_str))
+                    gym_result = await db.execute(gym_stmt)
+                    gym = gym_result.scalar_one_or_none()
+                    if gym:
+                        gym_name = gym.name or "N/A"
+                except:
+                    pass
+
             ws.append([
-                row.client_name or "N/A",
-                row.gym_name or "N/A",
-                format_type(row.type),
-                format_amount(row.amount),
-                format_date(row.purchased_at)
+                client_name,
+                gym_name,
+                "Gym Membership",
+                format_amount((order.gross_amount_minor / 100) if order.gross_amount_minor else 0),
+                format_date(order.created_at)
             ])
 
         # Auto-adjust column widths
@@ -1050,6 +1208,8 @@ async def export_gym_memberships(
     except Exception as e:
         import logging
         logging.error(f"Error in export_gym_memberships: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail="An error occurred while exporting gym memberships"
