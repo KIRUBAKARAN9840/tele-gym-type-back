@@ -99,20 +99,21 @@ async def get_monthly_gst_tds_optimized(
     """
     # Use month_start and month_end directly (already calculated)
 
-    # 1. DAILY PASS REVENUE
+    # 1. DAILY PASS REVENUE - Exclude gym_id = 1
     daily_pass_revenue = 0
     try:
         daily_pass_stmt = (
             select(func.coalesce(func.sum(DailyPass.amount_paid), 0))
             .where(func.date(DailyPass.created_at) >= month_start)
             .where(func.date(DailyPass.created_at) <= month_end)
+            .where(DailyPass.gym_id != "1")
         )
         daily_pass_result = await db.execute(daily_pass_stmt)
         daily_pass_revenue = daily_pass_result.scalar() or 0
     except Exception as e:
         print(f"[TAX_COMPLIANCE] Error fetching Daily Pass: {e}")
 
-    # 2. SESSIONS REVENUE
+    # 2. SESSIONS REVENUE - Exclude gym_id = 1
     sessions_revenue = 0
     try:
         sessions_stmt = (
@@ -120,77 +121,131 @@ async def get_monthly_gst_tds_optimized(
             .join(SessionBookingDay, SessionBooking.schedule_id == SessionBookingDay.schedule_id)
             .where(func.date(SessionBookingDay.booking_date) >= month_start)
             .where(func.date(SessionBookingDay.booking_date) <= month_end)
+            .where(SessionBookingDay.gym_id != 1)
         )
         sessions_result = await db.execute(sessions_stmt)
         sessions_revenue = sessions_result.scalar() or 0
     except Exception as e:
         print(f"[TAX_COMPLIANCE] Error fetching Sessions: {e}")
 
-    # 3. FITTBOT SUBSCRIPTION REVENUE
+    # 3. FITTBOT SUBSCRIPTION REVENUE - Exclude gym_id = 1
     fittbot_subscription_revenue = 0
     try:
-        # Method 1: Payments + Orders join
+        # Method 1: Payments + Orders join, exclude gym_id = 1
         fittbot_stmt_1 = (
             select(func.coalesce(func.sum(Order.gross_amount_minor), 0))
             .join(Payment, Payment.order_id == Order.id)
+            .join(OrderItem, OrderItem.order_id == Order.id)
             .where(Payment.provider == "google_play")
             .where(Payment.status == "captured")
             .where(Order.status == "paid")
             .where(func.date(Payment.captured_at) >= month_start)
             .where(func.date(Payment.captured_at) <= month_end)
+            .where(or_(OrderItem.gym_id != "1", OrderItem.gym_id.is_(None)))
         )
         fittbot_result_1 = await db.execute(fittbot_stmt_1)
         fittbot_subscription_revenue += fittbot_result_1.scalar() or 0
 
-        # Method 2: Orders with provider_order_id like 'sub_%'
+        # Method 2: Orders with provider_order_id like 'sub_%', exclude gym_id = 1
         fittbot_stmt_2 = (
             select(func.coalesce(func.sum(Order.gross_amount_minor), 0))
+            .join(OrderItem, OrderItem.order_id == Order.id)
             .where(Order.provider_order_id.like("sub_%"))
             .where(Order.status == "paid")
             .where(func.date(Order.created_at) >= month_start)
             .where(func.date(Order.created_at) <= month_end)
+            .where(or_(OrderItem.gym_id != "1", OrderItem.gym_id.is_(None)))
         )
         fittbot_result_2 = await db.execute(fittbot_stmt_2)
         fittbot_subscription_revenue += fittbot_result_2.scalar() or 0
     except Exception as e:
         print(f"[TAX_COMPLIANCE] Error fetching Fittbot Subscription: {e}")
 
-    # 4. GYM MEMBERSHIP REVENUE
+    # 4. GYM MEMBERSHIP REVENUE - Using same logic as Financials/Revenue Analytics APIs
+    # Query: payments joined with orders
+    # Filters: status = 'captured', order.status = 'paid'
+    # Metadata conditions: audit.source = "dailypass_checkout_api" OR
+    #                      order_info.flow = "unified_gym_membership_with_sub" OR
+    #                      order_info.flow = "unified_gym_membership_with_free_fittbot"
+    # Amount: gross_amount_minor from orders table
+    # Exclusion: gym_id != 1 (from order_items table)
     gym_membership_revenue = 0
     try:
+        # Fetch payments and orders
         gym_membership_stmt = (
-            select(Order.gross_amount_minor, Order.order_metadata)
-            .join(Payment, Payment.order_id == Order.id)
+            select(Payment, Order)
+            .join(Order, Order.id == Payment.order_id)
             .where(Payment.status == "captured")
             .where(Order.status == "paid")
             .where(func.date(Payment.captured_at) >= month_start)
             .where(func.date(Payment.captured_at) <= month_end)
         )
         gym_membership_result = await db.execute(gym_membership_stmt)
-        all_orders = gym_membership_result.all()
+        payments = gym_membership_result.all()
 
-        for order in all_orders:
-            amount = order.gross_amount_minor or 0
-            metadata = order.order_metadata
+        # Collect order IDs to fetch gym info from order_items (exclude gym_id = 1)
+        order_ids = [row.Order.id for row in payments]
 
-            if not metadata or not isinstance(metadata, dict):
+        # Fetch order items to get gym_ids (exclude gym_id = 1)
+        order_gym_mapping = {}
+        if order_ids:
+            order_items_stmt = (
+                select(OrderItem)
+                .where(OrderItem.order_id.in_(order_ids))
+                .where(OrderItem.gym_id.isnot(None))
+                .where(OrderItem.gym_id != "1")
+            )
+            order_items_result = await db.execute(order_items_stmt)
+            order_items = order_items_result.scalars().all()
+
+            # Create mapping from order_id to gym_id
+            for item in order_items:
+                if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
+                    order_gym_mapping[item.order_id] = int(item.gym_id)
+
+        # Filter by metadata conditions and gym_id exclusion
+        for row in payments:
+            payment = row.Payment
+            order = row.Order
+
+            # Check order_metadata for specific conditions (same as Financials/Revenue Analytics)
+            if not order.order_metadata or not isinstance(order.order_metadata, dict):
                 continue
 
+            metadata = order.order_metadata
+
+            # Condition 1: audit.source = "dailypass_checkout_api"
             condition1 = False
             if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
                 if metadata["audit"].get("source") == "dailypass_checkout_api":
                     condition1 = True
 
+            # Condition 2: order_info.flow = "unified_gym_membership_with_sub"
             condition2 = False
             if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
                 if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
                     condition2 = True
 
-            if condition1 or condition2:
-                gym_membership_revenue += amount
+            # Condition 3: order_info.flow = "unified_gym_membership_with_free_fittbot"
+            condition3 = False
+            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                    condition3 = True
+
+            # Only include if any condition matches AND order has valid gym_id (not gym_id = 1)
+            if not (condition1 or condition2 or condition3):
+                continue
+
+            if order.id not in order_gym_mapping:
+                continue
+
+            amount = order.gross_amount_minor or 0
+            gym_membership_revenue += amount
 
     except Exception as e:
         print(f"[TAX_COMPLIANCE] Error fetching Gym Membership: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Calculate GST Collected
     # Fymble Subscription: 18% GST on total revenue
