@@ -379,7 +379,7 @@ async def get_users_overview(
 class ConvertUserRequest(BaseModel):
     client_id: Union[str, int]  # Accept both string and int for client_id
     telecaller_id: int
-    purchased_plan: str
+    purchased_plan: Optional[str] = None  # Made optional
 
     @field_validator('client_id', mode='before')
     @classmethod
