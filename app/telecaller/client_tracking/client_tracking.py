@@ -21,17 +21,18 @@ async def get_clients_summary(
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
     search: Optional[str] = Query(None, description="Search by client name or phone"),
     call_status: Optional[str] = Query(None, description="Filter by latest call status: interested, not_interested, callback, no_answer, converted, follow_up, checkout, purchased"),
+    last_called_by: Optional[int] = Query(None, description="Filter by executive id (Last Called By)"),
     db: AsyncSession = Depends(get_async_db),
 ):
     try:
         
         offset = (page - 1) * limit
 
-        # Only build feedback subqueries when call_status filter is used (and not checkout/purchased)
+        # Build feedback subquery when call_status OR last_called_by filter is used
         is_checkout = call_status == "checkout"
         is_purchased = call_status == "purchased"
         latest_fb_detail = None
-        if call_status and not is_checkout and not is_purchased:
+        if (call_status or last_called_by) and not is_checkout and not is_purchased:
             latest_fb_id_subq = (
                 select(
                     ClientCallFeedback.client_id,
@@ -40,7 +41,7 @@ async def get_clients_summary(
                 .group_by(ClientCallFeedback.client_id)
                 .subquery()
             )
-            latest_fb_detail = (
+            latest_fb_detail_query = (
                 select(
                     ClientCallFeedback.client_id,
                     ClientCallFeedback.status.label("call_status"),
@@ -49,8 +50,13 @@ async def get_clients_summary(
                 )
                 .join(latest_fb_id_subq, ClientCallFeedback.id == latest_fb_id_subq.c.max_id)
                 .join(Telecaller, Telecaller.id == ClientCallFeedback.executive_id)
-                .subquery()
             )
+
+            # Apply executive filter if last_called_by is specified
+            if last_called_by:
+                latest_fb_detail_query = latest_fb_detail_query.where(ClientCallFeedback.executive_id == last_called_by)
+
+            latest_fb_detail = latest_fb_detail_query.subquery()
 
         # --- Count query ---
         count_query = (
@@ -84,6 +90,15 @@ async def get_clients_summary(
                 latest_fb_detail,
                 latest_fb_detail.c.client_id == ClientActivitySummary.client_id,
             ).where(latest_fb_detail.c.call_status == call_status)
+            # Also filter by last_called_by if specified
+            if last_called_by:
+                count_query = count_query.where(latest_fb_detail.c.executive_id == last_called_by)
+        elif last_called_by:
+            # Apply last_called_by filter to count query
+            count_query = count_query.join(
+                latest_fb_detail,
+                latest_fb_detail.c.client_id == ClientActivitySummary.client_id,
+            )
 
         if search:
             search_term = f"%{search.lower()}%"
@@ -187,8 +202,8 @@ async def get_clients_summary(
                 latest_fb_detail.c.call_status,
                 latest_fb_detail.c.executive_name,
             ]
-        else:
-            # Without status filter: simple query, no feedback join
+        elif last_called_by:
+            # Apply last_called_by filter to main query
             main_query = (
                 select(
                     ClientActivitySummary.client_id,
@@ -197,14 +212,65 @@ async def get_clients_summary(
                     Client.contact.label("phone"),
                     func.count(func.distinct(ClientActivitySummary.gym_id)).label("total_gyms_viewed"),
                     func.max(ClientActivitySummary.last_viewed_at).label("last_viewed_at"),
+                    latest_fb_detail.c.call_status,
+                    latest_fb_detail.c.executive_name,
                 )
                 .join(Client, Client.client_id == ClientActivitySummary.client_id)
+                .join(
+                    latest_fb_detail,
+                    latest_fb_detail.c.client_id == ClientActivitySummary.client_id,
+                )
             )
 
             group_by_cols = [
                 ClientActivitySummary.client_id,
                 Client.name, Client.profile, Client.contact,
+                latest_fb_detail.c.call_status,
+                latest_fb_detail.c.executive_name,
             ]
+        else:
+            # Without status filter: simple query, no feedback join
+            if last_called_by and latest_fb_detail:
+                # Include executive information when last_called_by filter is applied
+                main_query = (
+                    select(
+                        ClientActivitySummary.client_id,
+                        Client.name.label("client_name"),
+                        Client.profile.label("dp"),
+                        Client.contact.label("phone"),
+                        func.count(func.distinct(ClientActivitySummary.gym_id)).label("total_gyms_viewed"),
+                        func.max(ClientActivitySummary.last_viewed_at).label("last_viewed_at"),
+                        latest_fb_detail.c.executive_name,
+                    )
+                    .join(Client, Client.client_id == ClientActivitySummary.client_id)
+                    .join(
+                        latest_fb_detail,
+                        latest_fb_detail.c.client_id == ClientActivitySummary.client_id,
+                    )
+                )
+
+                group_by_cols = [
+                    ClientActivitySummary.client_id,
+                    Client.name, Client.profile, Client.contact,
+                    latest_fb_detail.c.executive_name,
+                ]
+            else:
+                main_query = (
+                    select(
+                        ClientActivitySummary.client_id,
+                        Client.name.label("client_name"),
+                        Client.profile.label("dp"),
+                        Client.contact.label("phone"),
+                        func.count(func.distinct(ClientActivitySummary.gym_id)).label("total_gyms_viewed"),
+                        func.max(ClientActivitySummary.last_viewed_at).label("last_viewed_at"),
+                    )
+                    .join(Client, Client.client_id == ClientActivitySummary.client_id)
+                )
+
+                group_by_cols = [
+                    ClientActivitySummary.client_id,
+                    Client.name, Client.profile, Client.contact,
+                ]
 
         if search:
             search_term = f"%{search.lower()}%"
