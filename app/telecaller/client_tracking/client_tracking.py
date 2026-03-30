@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, desc, func, or_, exists, cast, String, and_, Date
+from sqlalchemy import select, desc, func, or_, exists, cast, String, and_, Date, Integer, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from datetime import datetime, date
@@ -23,6 +23,7 @@ async def get_clients_summary(
     call_status: Optional[str] = Query(None, description="Filter by latest call status: interested, not_interested, callback, no_answer, converted, follow_up, checkout, purchased"),
     last_called_by: Optional[int] = Query(None, description="Filter by executive id (Last Called By)"),
     last_activity_date: Optional[str] = Query(None, description="Filter by last activity date (format: YYYY-MM-DD)"),
+    last_purchase_date: Optional[str] = Query(None, description="Filter by last purchase date (format: YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_async_db),
 ):
     try:
@@ -38,6 +39,17 @@ async def get_clients_summary(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Invalid date format for last_activity_date. Expected YYYY-MM-DD, got: {last_activity_date}"
+                )
+
+        # Parse last_purchase_date if provided
+        parsed_purchase_date = None
+        if last_purchase_date:
+            try:
+                parsed_purchase_date = datetime.strptime(last_purchase_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid date format for last_purchase_date. Expected YYYY-MM-DD, got: {last_purchase_date}"
                 )
 
         # Build feedback subquery when call_status OR last_called_by filter is used
@@ -132,6 +144,42 @@ async def get_clients_summary(
             count_query = count_query.join(
                 activity_date_subq,
                 activity_date_subq.c.client_id == ClientActivitySummary.client_id,
+            )
+
+        # Apply last_purchase_date filter to count query
+        if parsed_purchase_date:
+            # Create a union subquery to get max purchase date from all 3 tables
+            dp_purchases = (
+                select(cast(DailyPass.client_id, Integer).label("cid"), func.max(DailyPass.created_at).label("pmax_date"))
+                .group_by(DailyPass.client_id)
+            )
+            sp_purchases = (
+                select(SessionPurchase.client_id.label("cid"), func.max(SessionPurchase.created_at).label("pmax_date"))
+                .where(SessionPurchase.status == "paid")
+                .group_by(SessionPurchase.client_id)
+            )
+            gm_purchases = (
+                select(cast(FittbotGymMembership.client_id, Integer).label("cid"), func.max(FittbotGymMembership.purchased_at).label("pmax_date"))
+                .where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
+                .group_by(FittbotGymMembership.client_id)
+            )
+
+            # Combine all purchases using union_all function
+            combined = union_all(dp_purchases, sp_purchases, gm_purchases)
+            combined_alias = combined.alias("combined_purchases")
+            max_per_client = (
+                select(combined_alias.c.cid, func.max(combined_alias.c.pmax_date).label("final_max_date"))
+                .group_by(combined_alias.c.cid)
+                .alias("max_per_client")
+            )
+            purchase_date_subq = (
+                select(max_per_client.c.cid)
+                .where(cast(max_per_client.c.final_max_date, Date) == parsed_purchase_date)
+                .alias("purchase_date_filter")
+            )
+            count_query = count_query.join(
+                purchase_date_subq,
+                purchase_date_subq.c.cid == ClientActivitySummary.client_id,
             )
 
         total_count = await db.scalar(count_query) or 0
@@ -310,6 +358,41 @@ async def get_clients_summary(
         query_to_execute = main_query.group_by(*group_by_cols)
         if parsed_activity_date:
             query_to_execute = query_to_execute.having(cast(func.max(ClientActivitySummary.last_viewed_at), Date) == parsed_activity_date)
+
+        # Apply last_purchase_date filter - need to join with purchase subquery
+        if parsed_purchase_date:
+            # Create same union subquery as count_query
+            dp_purchases = (
+                select(cast(DailyPass.client_id, Integer).label("cid"), func.max(DailyPass.created_at).label("pmax_date"))
+                .group_by(DailyPass.client_id)
+            )
+            sp_purchases = (
+                select(SessionPurchase.client_id.label("cid"), func.max(SessionPurchase.created_at).label("pmax_date"))
+                .where(SessionPurchase.status == "paid")
+                .group_by(SessionPurchase.client_id)
+            )
+            gm_purchases = (
+                select(cast(FittbotGymMembership.client_id, Integer).label("cid"), func.max(FittbotGymMembership.purchased_at).label("pmax_date"))
+                .where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
+                .group_by(FittbotGymMembership.client_id)
+            )
+
+            combined = union_all(dp_purchases, sp_purchases, gm_purchases)
+            combined_alias = combined.alias("combined_purchases")
+            max_per_client = (
+                select(combined_alias.c.cid, func.max(combined_alias.c.pmax_date).label("final_max_date"))
+                .group_by(combined_alias.c.cid)
+                .alias("max_per_client")
+            )
+            purchase_date_subq = (
+                select(max_per_client.c.cid)
+                .where(cast(max_per_client.c.final_max_date, Date) == parsed_purchase_date)
+                .alias("purchase_date_filter")
+            )
+            query_to_execute = query_to_execute.join(
+                purchase_date_subq,
+                purchase_date_subq.c.cid == ClientActivitySummary.client_id,
+            )
 
         result = await db.execute(
             query_to_execute
