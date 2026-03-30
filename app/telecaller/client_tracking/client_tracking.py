@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, desc, func, or_, exists, cast, String, and_
+from sqlalchemy import select, desc, func, or_, exists, cast, String, and_, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from datetime import datetime, date
@@ -22,11 +22,23 @@ async def get_clients_summary(
     search: Optional[str] = Query(None, description="Search by client name or phone"),
     call_status: Optional[str] = Query(None, description="Filter by latest call status: interested, not_interested, callback, no_answer, converted, follow_up, checkout, purchased"),
     last_called_by: Optional[int] = Query(None, description="Filter by executive id (Last Called By)"),
+    last_activity_date: Optional[str] = Query(None, description="Filter by last activity date (format: YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_async_db),
 ):
     try:
-        
+
         offset = (page - 1) * limit
+
+        # Parse last_activity_date if provided
+        parsed_activity_date = None
+        if last_activity_date:
+            try:
+                parsed_activity_date = datetime.strptime(last_activity_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid date format for last_activity_date. Expected YYYY-MM-DD, got: {last_activity_date}"
+                )
 
         # Build feedback subquery when call_status OR last_called_by filter is used
         is_checkout = call_status == "checkout"
@@ -107,6 +119,19 @@ async def get_clients_summary(
                     func.lower(Client.name).like(search_term),
                     Client.contact.like(search_term),
                 )
+            )
+
+        # Apply last_activity_date filter to count query
+        if parsed_activity_date:
+            activity_date_subq = (
+                select(ClientActivitySummary.client_id)
+                .group_by(ClientActivitySummary.client_id)
+                .having(cast(func.max(ClientActivitySummary.last_viewed_at), Date) == parsed_activity_date)
+                .subquery()
+            )
+            count_query = count_query.join(
+                activity_date_subq,
+                activity_date_subq.c.client_id == ClientActivitySummary.client_id,
             )
 
         total_count = await db.scalar(count_query) or 0
@@ -281,9 +306,13 @@ async def get_clients_summary(
                 )
             )
 
+        # Apply last_activity_date filter using HAVING clause
+        query_to_execute = main_query.group_by(*group_by_cols)
+        if parsed_activity_date:
+            query_to_execute = query_to_execute.having(cast(func.max(ClientActivitySummary.last_viewed_at), Date) == parsed_activity_date)
+
         result = await db.execute(
-            main_query
-            .group_by(*group_by_cols)
+            query_to_execute
             .order_by(desc("last_viewed_at"))
             .offset(offset)
             .limit(limit)
