@@ -407,8 +407,6 @@ async def get_client_counts(
        - If contains 'expired' OR 'upcoming' → Inactive count
     """
     try:
-        print("[CLIENT-COUNTS] Fetching client counts...")
-
         # Step 1: Check clients table - get only rows where both client_id AND gym_id are present
         clients_stmt = select(Client.client_id, Client.gym_id).where(
             and_(
@@ -426,11 +424,6 @@ async def get_client_counts(
             valid_client_gym_pairs.add((str(row.client_id), str(row.gym_id)))
 
         total_clients = len(valid_client_gym_pairs)
-        print(f"[CLIENT-COUNTS] Total valid (client_id, gym_id) pairs from clients table: {total_clients}")
-
-        # DEBUG: Show first 5 pairs
-        sample_pairs = list(valid_client_gym_pairs)[:5]
-        print(f"[CLIENT-COUNTS] Sample pairs from clients table: {sample_pairs}")
 
         if total_clients == 0:
             return {
@@ -464,8 +457,6 @@ async def get_client_counts(
         all_membership_result = await db.execute(all_membership_stmt)
         all_memberships = all_membership_result.all()
 
-        print(f"[CLIENT-COUNTS] Total memberships in database: {len(all_memberships)}")
-
         # Create a dictionary to store the latest membership for each (client_id, gym_id) pair
         latest_memberships = {}
         for membership in all_memberships:
@@ -481,8 +472,6 @@ async def get_client_counts(
                 # Since we ordered by id DESC, the first one we encounter is the latest
                 if pair_key not in latest_memberships:
                     latest_memberships[pair_key] = membership
-
-        print(f"[CLIENT-COUNTS] Found latest memberships for {len(latest_memberships)} valid (client_id, gym_id) pairs")
 
         # Step 3: Check the status for each valid pair
         for pair_key in valid_client_gym_pairs:
@@ -501,21 +490,9 @@ async def get_client_counts(
                 # No membership found for this valid client
                 no_membership_count += 1
 
-        print(f"[CLIENT-COUNTS] Active clients: {active_clients_count}")
-        print(f"[CLIENT-COUNTS] Inactive clients: {inactive_clients_count}")
-        print(f"[CLIENT-COUNTS] No membership found: {no_membership_count}")
-        print(f"[CLIENT-COUNTS] Total with membership: {active_clients_count + inactive_clients_count}")
-        print(f"[CLIENT-COUNTS] Total in clients table: {total_clients}")
-
         # Important: Only count clients that have a membership record
         # Clients without membership are NOT counted in active or inactive
         final_total = active_clients_count + inactive_clients_count
-
-        # DEBUG: Verify the counts
-        print(f"[CLIENT-COUNTS] ✓✓✓ FINAL COUNTS ✓✓✓")
-        print(f"[CLIENT-COUNTS] Active: {active_clients_count}")
-        print(f"[CLIENT-COUNTS] Inactive: {inactive_clients_count}")
-        print(f"[CLIENT-COUNTS] Total (cards): {final_total}")
 
         return {
             "success": True,
@@ -528,7 +505,6 @@ async def get_client_counts(
         }
 
     except Exception as e:
-        print(f"[CLIENT-COUNTS] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return {
@@ -554,8 +530,6 @@ async def get_online_offline_counts(
     5. If (client_id, gym_id) combination is not in memberships → Leave it (don't count)
     """
     try:
-        print("[ONLINE-OFFLINE-COUNTS] Fetching online/offline member counts...")
-
         # Step 1: Check clients table - get only rows where both client_id AND gym_id are present
         clients_stmt = select(Client.client_id, Client.gym_id).where(
             and_(
@@ -573,7 +547,6 @@ async def get_online_offline_counts(
             valid_client_gym_pairs.add((str(row.client_id), str(row.gym_id)))
 
         total_clients = len(valid_client_gym_pairs)
-        print(f"[ONLINE-OFFLINE-COUNTS] Total valid (client_id, gym_id) pairs from clients table: {total_clients}")
 
         if total_clients == 0:
             return {
@@ -599,8 +572,6 @@ async def get_online_offline_counts(
         all_membership_result = await db.execute(all_membership_stmt)
         all_memberships = all_membership_result.all()
 
-        print(f"[ONLINE-OFFLINE-COUNTS] Total memberships in database: {len(all_memberships)}")
-
         # Step 3: Build dictionary of latest memberships for valid pairs only
         latest_memberships = {}
         for membership in all_memberships:
@@ -615,8 +586,6 @@ async def get_online_offline_counts(
             if pair_key in valid_client_gym_pairs:
                 if pair_key not in latest_memberships:
                     latest_memberships[pair_key] = membership
-
-        print(f"[ONLINE-OFFLINE-COUNTS] Found latest memberships for {len(latest_memberships)} valid pairs")
 
         # Step 4: Count online and offline based on type
         online_members_count = 0
@@ -643,13 +612,6 @@ async def get_online_offline_counts(
 
         final_total = online_members_count + offline_members_count
 
-        print(f"[ONLINE-OFFLINE-COUNTS] ✓✓✓ FINAL COUNTS ✓✓✓")
-        print(f"[ONLINE-OFFLINE-COUNTS] Online members: {online_members_count}")
-        print(f"[ONLINE-OFFLINE-COUNTS] Offline members: {offline_members_count}")
-        print(f"[ONLINE-OFFLINE-COUNTS] No membership found: {no_membership_count}")
-        print(f"[ONLINE-OFFLINE-COUNTS] Total with membership: {final_total}")
-        print(f"[ONLINE-OFFLINE-COUNTS] Total in clients table: {total_clients}")
-
         return {
             "success": True,
             "data": {
@@ -661,27 +623,6 @@ async def get_online_offline_counts(
         }
 
     except Exception as e:
-        print(f"[ONLINE-OFFLINE-COUNTS] Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return {
-            "success": False,
-            "message": f"Failed to fetch online/offline counts: {str(e)}"
-        }
-        print(f"[ONLINE-OFFLINE-COUNTS] Offline members: {offline_count}")
-
-        return {
-            "success": True,
-            "data": {
-                "online_members": online_count,
-                "offline_members": offline_count,
-                "total_members": online_count + offline_count
-            },
-            "message": "Online/offline member counts fetched successfully"
-        }
-
-    except Exception as e:
-        print(f"[ONLINE-OFFLINE-COUNTS] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return {
@@ -869,7 +810,6 @@ async def get_active_clients(
         }
 
     except Exception as e:
-        print(f"[ACTIVE-CLIENTS] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch active clients: {str(e)}")
@@ -1064,7 +1004,6 @@ async def get_inactive_clients(
         }
 
     except Exception as e:
-        print(f"[INACTIVE-CLIENTS] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch inactive clients: {str(e)}")
@@ -1246,7 +1185,6 @@ async def get_online_members(
         }
 
     except Exception as e:
-        print(f"[ONLINE-MEMBERS] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch online members: {str(e)}")
@@ -1428,7 +1366,6 @@ async def get_offline_members(
         }
 
     except Exception as e:
-        print(f"[OFFLINE-MEMBERS] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch offline members: {str(e)}")
@@ -1774,7 +1711,6 @@ async def get_users_overview(
         }
 
     except Exception as e:
-        print(f"[USERS-OVERVIEW] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error fetching users overview: {str(e)}")
@@ -2115,8 +2051,6 @@ async def get_user_daily_pass_purchases(
     """Get daily pass purchases for a specific user filtered by client_id only"""
     dailypass_session = None
     try:
-        print(f"[DAILY_PASS_API] Fetching daily passes for user_id: {user_id}")
-
         # Get dailypass database session
         dailypass_session = get_dailypass_session()
 
@@ -2133,8 +2067,6 @@ async def get_user_daily_pass_purchases(
             .all()
         )
 
-        print(f"[DAILY_PASS_API] String match found: {len(daily_passes)} passes")
-
         # If no results with string, try integer
         if len(daily_passes) == 0:
             daily_passes = (
@@ -2143,7 +2075,6 @@ async def get_user_daily_pass_purchases(
                 .order_by(DailyPass.created_at.desc())
                 .all()
             )
-            print(f"[DAILY_PASS_API] Integer match found: {len(daily_passes)} passes")
 
         if not daily_passes:
             return {
@@ -2169,7 +2100,6 @@ async def get_user_daily_pass_purchases(
             gym_result = await db.execute(gym_stmt)
             for gym_id, gym_name in gym_result.all():
                 gym_names[gym_id] = gym_name
-            print(f"[DAILY_PASS_API] Fetched {len(gym_names)} gym names")
 
         # Format the response
         purchases = []
@@ -2206,7 +2136,6 @@ async def get_user_daily_pass_purchases(
         }
 
     except Exception as e:
-        print(f"[DAILY_PASS_API] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return {
@@ -2231,8 +2160,6 @@ async def get_user_session_bookings(
 ):
     """Get session bookings for a specific user filtered by client_id"""
     try:
-        print(f"[SESSIONS_API] Fetching session bookings for user_id: {user_id}")
-
         # Query session booking days filtered by client_id
         # SessionBookingDay is in the sessions schema and contains the actual booking instances
         # Join with SessionBooking to get price_paid from session_bookings table via schedule_id
@@ -2253,8 +2180,6 @@ async def get_user_session_bookings(
                 "message": "No session bookings found for this user",
                 "total": 0
             }
-
-        print(f"[SESSIONS_API] Found {len(bookings)} session bookings")
 
         # Get purchase_ids to fetch SessionPurchase amounts (same as purchases/all page)
         purchase_ids = list({b.SessionBookingDay.purchase_id for b in bookings if b.SessionBookingDay.purchase_id})
@@ -2286,7 +2211,6 @@ async def get_user_session_bookings(
                 if display_name == "personal_training_session":
                     display_name = "personal_training"
                 sessions_map[session_id] = display_name
-            print(f"[SESSIONS_API] Fetched {len(sessions_map)} session names")
 
         # Get unique gym_ids to fetch gym names
         gym_ids = list({b.SessionBookingDay.gym_id for b in bookings if b.SessionBookingDay.gym_id})
@@ -2296,7 +2220,6 @@ async def get_user_session_bookings(
             gym_result = await db.execute(gym_stmt)
             for gym_id, gym_name in gym_result.all():
                 gym_names[gym_id] = gym_name
-            print(f"[SESSIONS_API] Fetched {len(gym_names)} gym names")
 
         # Format the response
         session_bookings = []
@@ -2333,7 +2256,6 @@ async def get_user_session_bookings(
         }
 
     except Exception as e:
-        print(f"[SESSIONS_API] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return {
@@ -2351,8 +2273,6 @@ async def get_user_fittbot_subscription(
 ):
     """Get Fittbot subscription for a specific user using the same logic as recurring-subscribers"""
     try:
-        print(f"[SUBSCRIPTION_API] Fetching Fittbot subscription for user_id: {user_id}")
-
         subscriptions = []
 
         # FIRST CONDITION: Orders table -> Payments table
@@ -2387,8 +2307,6 @@ async def get_user_fittbot_subscription(
             payment_from_order_result = await db.execute(payment_from_order_stmt)
             payments_from_orders = payment_from_order_result.all()
 
-            print(f"[SUBSCRIPTION_API] Found {len(payments_from_orders)} subscription records from orders->payments")
-
             for payment in payments_from_orders:
                 subscriptions.append({
                     "id": payment.id,
@@ -2414,8 +2332,6 @@ async def get_user_fittbot_subscription(
         payment_result = await db.execute(payment_stmt)
         payments = payment_result.all()
 
-        print(f"[SUBSCRIPTION_API] Found {len(payments)} subscription records from payments (google_play)")
-
         # Deduplicate by payment ID and add
         existing_payment_ids = {sub["id"] for sub in subscriptions}
 
@@ -2440,8 +2356,6 @@ async def get_user_fittbot_subscription(
         # Sort by captured_at descending (newest first)
         subscriptions.sort(key=lambda x: x["captured_at"] or "", reverse=True)
 
-        print(f"[SUBSCRIPTION_API] Total {len(subscriptions)} unique subscription records")
-
         return {
             "success": True,
             "data": subscriptions,
@@ -2450,7 +2364,6 @@ async def get_user_fittbot_subscription(
         }
 
     except Exception as e:
-        print(f"[SUBSCRIPTION_API] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return {
@@ -2468,9 +2381,6 @@ async def get_user_gym_membership(
 ):
     """Get Gym Membership purchases for a specific user from payments and orders tables"""
     try:
-        # print(f"[GYM_MEMBERSHIP_API] Fetching Gym Membership for user_id: {user_id}")
-        # print(f"[GYM_MEMBERSHIP_API] user_id type: {type(user_id)}, value: {user_id}")
-
         gym_memberships = []
 
         # Query payments table with filters
@@ -2485,8 +2395,6 @@ async def get_user_gym_membership(
 
         payment_result = await db.execute(payment_stmt)
         payments = payment_result.all()
-
-        # print(f"[GYM_MEMBERSHIP_API] Found {len(payments)} captured payments with paid orders for user")
 
         # Collect order IDs to fetch gym info
         order_ids = [row.Order.id for row in payments]
@@ -2561,8 +2469,6 @@ async def get_user_gym_membership(
             if not (condition1 or condition2 or condition3):
                 continue
 
-            # print(f"[GYM_MEMBERSHIP_API] Including order {order.id} - condition1: {condition1}, condition2: {condition2}")
-
             # Get gym name from order_items mapping
             gym_id = order_gym_mapping.get(order.id)
             gym_name = gym_name_cache.get(gym_id) if gym_id else None
@@ -2591,8 +2497,6 @@ async def get_user_gym_membership(
                 "total": 0
             }
 
-        # print(f"[GYM_MEMBERSHIP_API] Total {len(gym_memberships)} gym membership records")
-
         return {
             "success": True,
             "data": gym_memberships,
@@ -2601,7 +2505,6 @@ async def get_user_gym_membership(
         }
 
     except Exception as e:
-        # print(f"[GYM_MEMBERSHIP_API] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         return {
@@ -2664,7 +2567,7 @@ async def get_user_last_purchases(
                     "amount_paid": float(daily_pass.amount_paid) if daily_pass.amount_paid else None
                 }
         except Exception as e:
-            print(f"[LAST_PURCHASES] Error fetching Daily Pass: {e}")
+            pass
 
         # 2. Get latest Session Purchase (only paid status)
         try:
@@ -2694,7 +2597,7 @@ async def get_user_last_purchases(
                     "payable_rupees": float(sp.payable_rupees) if sp.payable_rupees else None
                 }
         except Exception as e:
-            print(f"[LAST_PURCHASES] Error fetching Session: {e}")
+            pass
 
         # 3. Get latest Gym Membership (excluding 'normal' and 'admission_fees')
         try:
@@ -2723,7 +2626,7 @@ async def get_user_last_purchases(
                     "amount": float(gm.amount) if gm.amount else None
                 }
         except Exception as e:
-            print(f"[LAST_PURCHASES] Error fetching Membership: {e}")
+            pass
 
         # 4. Get latest Subscription (excluding 'free_trial' and 'internal_manual')
         try:
@@ -2755,7 +2658,7 @@ async def get_user_last_purchases(
                     "is_active": is_subscription_active(sub.active_until, now)
                 }
         except Exception as e:
-            print(f"[LAST_PURCHASES] Error fetching Subscription: {e}")
+            pass
 
         return {
             "success": True,
@@ -2764,7 +2667,6 @@ async def get_user_last_purchases(
         }
 
     except Exception as e:
-        print(f"[LAST_PURCHASES] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error fetching last purchases: {str(e)}")
