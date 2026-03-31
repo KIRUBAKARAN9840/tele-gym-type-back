@@ -5,7 +5,7 @@ from sqlalchemy import func, and_, select, distinct, or_
 from app.models.async_database import get_async_db
 from app.models.dailypass_models import get_dailypass_session, DailyPass
 from app.models.fittbot_models import (
-    SessionBookingDay, SessionBooking, Gym, ActiveUser, Client
+    SessionBookingDay, SessionBooking, SessionPurchase, Gym, ActiveUser, Client
 )
 from app.fittbot_api.v1.payments.models.payments import Payment
 from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
@@ -18,9 +18,13 @@ async def get_revenue_breakdown_optimized(db: AsyncSession, dailypass_session, s
     """
     Calculate revenue breakdown using optimized bulk queries.
     No loops with database calls - all queries are aggregated.
+
+    NOTE: Sessions revenue is in RUPEES (from SessionPurchase.payable_rupees).
+    All other revenues are in PAISA (minor units).
+    Returns all values in PAISA for consistency (sessions is converted to paisa).
     """
 
-    # 1. DAILY PASS REVENUE - Single aggregated query
+    # 1. DAILY PASS REVENUE - Single aggregated query (in PAISA)
     daily_pass_revenue = 0
     try:
         daily_pass_stmt = (
@@ -33,21 +37,34 @@ async def get_revenue_breakdown_optimized(db: AsyncSession, dailypass_session, s
     except Exception as e:
         print(f"[FINANCIALS] Error fetching Daily Pass: {e}")
 
-    # 2. SESSIONS REVENUE - Single aggregated query
-    sessions_revenue = 0
+    # 2. SESSIONS REVENUE - Using session_purchases table only (in RUPEES)
+    sessions_revenue_rupees = 0
     try:
+        # Include if created within date range OR updated within date range
+        created_in_range = and_(
+            func.date(SessionPurchase.created_at) >= start_date,
+            func.date(SessionPurchase.created_at) <= end_date
+        )
+        updated_in_range = and_(
+            func.date(SessionPurchase.updated_at) >= start_date,
+            func.date(SessionPurchase.updated_at) <= end_date
+        )
+
         sessions_stmt = (
-            select(func.coalesce(func.sum(SessionBooking.price_paid), 0))
-            .join(SessionBookingDay, SessionBooking.schedule_id == SessionBookingDay.schedule_id)
-            .where(func.date(SessionBookingDay.booking_date) >= start_date)
-            .where(func.date(SessionBookingDay.booking_date) <= end_date)
+            select(func.coalesce(func.sum(SessionPurchase.payable_rupees), 0))
+            .where(SessionPurchase.status == "paid")
+            .where(SessionPurchase.gym_id != 1)
+            .where(or_(created_in_range, updated_in_range))
         )
         sessions_result = await db.execute(sessions_stmt)
-        sessions_revenue = sessions_result.scalar() or 0
+        sessions_revenue_rupees = sessions_result.scalar() or 0
     except Exception as e:
         print(f"[FINANCIALS] Error fetching Sessions: {e}")
 
-    # 3. FITTBOT SUBSCRIPTION REVENUE - Two bulk aggregated queries
+    # Convert sessions from RUPEES to PAISA for consistency
+    sessions_revenue = int(sessions_revenue_rupees * 100) if sessions_revenue_rupees else 0
+
+    # 3. FITTBOT SUBSCRIPTION REVENUE - Two bulk aggregated queries (in PAISA)
     fittbot_subscription_revenue = 0
     try:
         # Method 1: Payments + Orders join
@@ -76,7 +93,7 @@ async def get_revenue_breakdown_optimized(db: AsyncSession, dailypass_session, s
     except Exception as e:
         print(f"[FINANCIALS] Error fetching Fittbot Subscription: {e}")
 
-    # 4. GYM MEMBERSHIP REVENUE - Using same logic as Revenue Analytics API
+    # 4. GYM MEMBERSHIP REVENUE - Using same logic as Revenue Analytics API (in PAISA)
     # Query: payments joined with orders
     # Filters: status = 'captured', order.status = 'paid'
     # Metadata conditions: audit.source = "dailypass_checkout_api" OR

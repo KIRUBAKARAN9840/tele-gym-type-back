@@ -9,7 +9,7 @@ from sqlalchemy.sql.expression import literal
 from app.models.fittbot_models import (
     Client, Gym, ClientToken, OwnerToken, GymOwner, RewardInterest, RewardProgramOptIn,
     SessionSetting, GymPlans, GymStudiosPic, GymOnboardingPics,
-    SessionBookingDay, SessionBooking, ClassSession, ClientFittbotAccess, ActiveUser
+    SessionBookingDay, SessionBooking, ClassSession, ClientFittbotAccess, ActiveUser, SessionPurchase
 )
 from app.models.adminmodels import(SupportTicketAssignment,Admins)
 from app.models.async_database import get_async_db
@@ -1315,48 +1315,57 @@ async def get_revenue_analytics(
             except Exception:
                 pass
 
-        # 2. SESSIONS REVENUE
-        # Query: session_booking_days joined with session_bookings
-        # Filter: booking_date (or created_at) in date range
-        # Amount: price_paid from session_bookings table
+        # 2. FITNESS CLASS (SESSIONS) REVENUE
+        # Query: session_purchases table
+        # Filter: status = 'paid', created_at OR updated_at in date range
+        # Amount: payable_rupees from session_purchases table
         # Exclude gym_id = 1
         if not source or source == "sessions":
             try:
+                # Include if created within date range OR updated within date range
+                created_in_range = and_(
+                    func.date(SessionPurchase.created_at) >= start_date_obj,
+                    func.date(SessionPurchase.created_at) <= end_date_obj
+                )
+                updated_in_range = and_(
+                    func.date(SessionPurchase.updated_at) >= start_date_obj,
+                    func.date(SessionPurchase.updated_at) <= end_date_obj
+                )
+
                 session_stmt = (
-                    select(SessionBookingDay, SessionBooking)
-                    .join(SessionBooking, SessionBooking.schedule_id == SessionBookingDay.schedule_id, isouter=True)
-                    .where(func.date(SessionBookingDay.booking_date) >= start_date_obj)
-                    .where(func.date(SessionBookingDay.booking_date) <= end_date_obj)
-                    .where(SessionBookingDay.gym_id != 1)
+                    select(SessionPurchase)
+                    .where(SessionPurchase.status == "paid")
+                    .where(or_(created_in_range, updated_in_range))
                 )
 
                 # Apply gym filter if provided
                 if gym_id:
-                    session_stmt = session_stmt.where(SessionBookingDay.gym_id == gym_id)
+                    session_stmt = session_stmt.where(SessionPurchase.gym_id == gym_id)
+                else:
+                    # Exclude gym_id = 1 only when no specific gym filter
+                    session_stmt = session_stmt.where(SessionPurchase.gym_id != 1)
 
                 session_result = await db.execute(session_stmt)
-                sessions = session_result.all()
+                sessions = session_result.scalars().all()
 
-                for row in sessions:
-                    booking = row.SessionBookingDay
-                    booking_info = row.SessionBooking
-                    amount = booking_info.price_paid if booking_info else 0
+                for purchase in sessions:
+                    amount = purchase.payable_rupees or 0
 
-                    total_revenue += amount
-                    source_revenue["sessions"] += amount
+                    total_revenue += amount * 100  # Convert to paise for total_revenue
+                    source_revenue["sessions"] += amount  # Keep in rupees for display
 
-                    # Track daily revenue
-                    date_key = booking.booking_date.isoformat() if booking.booking_date else None
+                    # Track daily revenue using created_at
+                    date_key = purchase.created_at.date().isoformat() if purchase.created_at else None
                     if date_key:
                         if date_key not in daily_revenue:
                             daily_revenue[date_key] = 0
-                        daily_revenue[date_key] += amount
+                        daily_revenue[date_key] += amount * 100  # Convert to paise
 
-                    # Track gym-wise revenue
-                    if booking.gym_id:
-                        if booking.gym_id not in gym_revenue:
-                            gym_revenue[booking.gym_id] = 0
-                        gym_revenue[booking.gym_id] += amount
+                    # Track gym-wise revenue using gym_id from session_purchases
+                    if purchase.gym_id:
+                        if purchase.gym_id not in gym_revenue:
+                            gym_revenue[purchase.gym_id] = 0
+                        gym_revenue[purchase.gym_id] += amount * 100  # Convert to paise
 
             except Exception:
                 pass
@@ -1602,7 +1611,7 @@ async def get_revenue_analytics(
             "sourceSplit": source_revenue,
             "sourceSplitRupees": {
                 "daily_pass": source_revenue["daily_pass"] / 100,
-                "sessions": source_revenue["sessions"] / 100,
+                "sessions": source_revenue["sessions"],  # payable_rupees is already in rupees, don't divide
                 "fittbot_subscription": source_revenue["fittbot_subscription"] / 100,
                 "gym_membership": source_revenue["gym_membership"] / 100
             },

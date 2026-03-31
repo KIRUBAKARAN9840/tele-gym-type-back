@@ -10,7 +10,7 @@ import calendar
 
 from app.models.async_database import get_async_db
 from app.models.dailypass_models import get_dailypass_session, DailyPass
-from app.models.fittbot_models import SessionBookingDay, SessionBooking, GymPlans, FittbotGymMembership
+from app.models.fittbot_models import SessionBookingDay, SessionBooking, SessionPurchase, GymPlans, FittbotGymMembership
 from app.fittbot_api.v1.payments.models.payments import Payment
 from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
 from app.fittbot_api.v1.payments.models.catalog import CatalogProduct
@@ -178,20 +178,33 @@ async def get_revenue_with_amortization(
         print(f"[MRR] Error fetching Daily Pass: {e}")
 
     # 2. SESSIONS REVENUE - Only sessions booked in target month (one-time product)
+    # NOTE: SessionPurchase.payable_rupees is in RUPEES, need to convert to PAISA
     # Exclude gym_id = 1
-    sessions_revenue = 0
+    sessions_revenue_rupees = 0
     try:
+        # Include if created within date range OR updated within date range
+        created_in_range = and_(
+            func.date(SessionPurchase.created_at) >= target_month_start,
+            func.date(SessionPurchase.created_at) <= target_month_end
+        )
+        updated_in_range = and_(
+            func.date(SessionPurchase.updated_at) >= target_month_start,
+            func.date(SessionPurchase.updated_at) <= target_month_end
+        )
+
         sessions_stmt = (
-            select(func.coalesce(func.sum(SessionBooking.price_paid), 0))
-            .join(SessionBookingDay, SessionBooking.schedule_id == SessionBookingDay.schedule_id)
-            .where(func.date(SessionBookingDay.booking_date) >= target_month_start)
-            .where(func.date(SessionBookingDay.booking_date) <= target_month_end)
-            .where(SessionBookingDay.gym_id != 1)
+            select(func.coalesce(func.sum(SessionPurchase.payable_rupees), 0))
+            .where(SessionPurchase.status == "paid")
+            .where(SessionPurchase.gym_id != 1)
+            .where(or_(created_in_range, updated_in_range))
         )
         sessions_result = await db.execute(sessions_stmt)
-        sessions_revenue = sessions_result.scalar() or 0
+        sessions_revenue_rupees = sessions_result.scalar() or 0
     except Exception as e:
         print(f"[MRR] Error fetching Sessions: {e}")
+
+    # Convert sessions from RUPEES to PAISA for consistency with other revenue sources
+    sessions_revenue = int(sessions_revenue_rupees * 100) if sessions_revenue_rupees else 0
 
     # 3. FITTBOT SUBSCRIPTION REVENUE - All subscriptions ACTIVE during target month
     # Active = payment_date <= target_month_end AND (payment_date + duration_months) > target_month_start
