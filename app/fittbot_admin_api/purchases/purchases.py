@@ -25,6 +25,7 @@ async def get_all_purchases(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
     search: Optional[str] = Query(None, description="Search by client or gym name"),
+    type: Optional[str] = Query(None, description="Filter by type: 'Session' or 'Daily Pass'"),
     db: AsyncSession = Depends(get_async_db)
 ):
     try:
@@ -108,8 +109,11 @@ async def get_all_purchases(
         # Combine both queries with UNION ALL
         combined_query = union_all(daily_pass_query, session_purchase_query).alias("combined_purchases")
 
-        # Count total records for pagination
-        count_query = select(func.count()).select_from(combined_query)
+        # Apply type filter to combined query if type is provided
+        if type:
+            count_query = select(func.count()).select_from(combined_query).where(combined_query.c.type == type)
+        else:
+            count_query = select(func.count()).select_from(combined_query)
         count_result = await db.execute(count_query)
         total = count_result.scalar() or 0
 
@@ -156,6 +160,10 @@ async def get_all_purchases(
             .offset((page - 1) * limit)
             .limit(limit)
         )
+
+        # Apply type filter if provided
+        if type:
+            final_query = final_query.where(combined_query.c.type == type)
 
         # Execute query (async, non-blocking)
         result = await db.execute(final_query)
@@ -735,6 +743,7 @@ async def get_gym_memberships(
 @router.get("/export-purchases")
 async def export_purchases(
     search: Optional[str] = Query(None, description="Search by client or gym name"),
+    type: Optional[str] = Query(None, description="Filter by type: 'Session' or 'Daily Pass'"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -832,6 +841,10 @@ async def export_purchases(
             .select_from(combined_query)
             .order_by(combined_query.c.purchased_at.desc())
         )
+
+        # Apply type filter if provided
+        if type:
+            final_query = final_query.where(combined_query.c.type == type)
 
         # Execute query
         result = await db.execute(final_query)

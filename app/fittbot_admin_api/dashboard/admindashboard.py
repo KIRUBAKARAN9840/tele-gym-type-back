@@ -1817,7 +1817,8 @@ async def get_purchase_analytics(
                     func.count(distinct(DailyPass.client_id)).label('total_unique_users')
                 ).filter(
                     func.date(DailyPass.created_at) >= start_date_obj,
-                    func.date(DailyPass.created_at) <= end_date_obj
+                    func.date(DailyPass.created_at) <= end_date_obj,
+                    DailyPass.gym_id != "1"  # Exclude gym_id = 1
                 )
 
                 # Apply gym filter if provided
@@ -1847,7 +1848,8 @@ async def get_purchase_analytics(
                     func.count().label('purchase_count')
                 ).filter(
                     func.date(DailyPass.created_at) >= start_date_obj,
-                    func.date(DailyPass.created_at) <= end_date_obj
+                    func.date(DailyPass.created_at) <= end_date_obj,
+                    DailyPass.gym_id != "1"  # Exclude gym_id = 1
                 )
 
                 # Apply gym filter if provided
@@ -1909,7 +1911,8 @@ async def get_purchase_analytics(
                     ).filter(
                         func.date(DailyPass.created_at) >= start_date_obj,
                         func.date(DailyPass.created_at) <= end_date_obj,
-                        DailyPass.gym_id.isnot(None)
+                        DailyPass.gym_id.isnot(None),
+                        DailyPass.gym_id != "1"  # Exclude gym_id = 1
                     )
 
                     # Apply location filter if provided
@@ -1939,7 +1942,8 @@ async def get_purchase_analytics(
                         ).filter(
                             func.date(DailyPass.created_at) >= start_date_obj,
                             func.date(DailyPass.created_at) <= end_date_obj,
-                            DailyPass.client_id.isnot(None)
+                            DailyPass.client_id.isnot(None),
+                            DailyPass.gym_id != "1"  # Exclude gym_id = 1
                         )
 
                         # Apply gym filter if provided
@@ -1952,7 +1956,8 @@ async def get_purchase_analytics(
                         ).filter(
                             func.date(DailyPass.created_at) >= start_date_obj,
                             func.date(DailyPass.created_at) <= end_date_obj,
-                            DailyPass.client_id.isnot(None)
+                            DailyPass.client_id.isnot(None),
+                            DailyPass.gym_id != "1"  # Exclude gym_id = 1
                         )
 
                         # Apply gym filter if provided
@@ -2007,7 +2012,8 @@ async def get_purchase_analytics(
                     .select_from(SessionBookingDay)
                     .where(
                         func.date(SessionBookingDay.booking_date) >= start_date_obj,
-                        func.date(SessionBookingDay.booking_date) <= end_date_obj
+                        func.date(SessionBookingDay.booking_date) <= end_date_obj,
+                        SessionBookingDay.gym_id != 1  # Exclude gym_id = 1
                     )
                 )
 
@@ -2035,7 +2041,8 @@ async def get_purchase_analytics(
                     .select_from(SessionBookingDay)
                     .where(
                         func.date(SessionBookingDay.booking_date) >= start_date_obj,
-                        func.date(SessionBookingDay.booking_date) <= end_date_obj
+                        func.date(SessionBookingDay.booking_date) <= end_date_obj,
+                        SessionBookingDay.gym_id != 1  # Exclude gym_id = 1
                     )
                 )
 
@@ -2106,7 +2113,8 @@ async def get_purchase_analytics(
                         .where(
                             func.date(SessionBookingDay.booking_date) >= start_date_obj,
                             func.date(SessionBookingDay.booking_date) <= end_date_obj,
-                            SessionBookingDay.gym_id.isnot(None)
+                            SessionBookingDay.gym_id.isnot(None),
+                            SessionBookingDay.gym_id != 1  # Exclude gym_id = 1
                         )
                     )
 
@@ -2134,7 +2142,8 @@ async def get_purchase_analytics(
                             .where(
                                 func.date(SessionBookingDay.booking_date) >= start_date_obj,
                                 func.date(SessionBookingDay.booking_date) <= end_date_obj,
-                                SessionBookingDay.client_id.isnot(None)
+                                SessionBookingDay.client_id.isnot(None),
+                                SessionBookingDay.gym_id != 1  # Exclude gym_id = 1
                             )
                         )
 
@@ -2357,13 +2366,16 @@ async def get_purchase_analytics(
                         select(OrderItem)
                         .where(OrderItem.order_id.in_(order_ids))
                         .where(OrderItem.gym_id.isnot(None))
+                        .where(OrderItem.gym_id != "1")  # Exclude gym_id = 1
                     )
                     order_items_result = await db.execute(order_items_stmt)
                     order_items = order_items_result.scalars().all()
 
                     for item in order_items:
                         if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
-                            order_gym_mapping[item.order_id] = int(item.gym_id)
+                            gym_id_int = int(item.gym_id)
+                            if gym_id_int != 1:  # Exclude gym_id = 1
+                                order_gym_mapping[item.order_id] = gym_id_int
 
                 unique_customer_ids = set()
 
