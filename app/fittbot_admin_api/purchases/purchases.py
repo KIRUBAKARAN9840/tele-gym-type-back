@@ -52,10 +52,11 @@ async def get_all_purchases(
                 Client.platform.label("platform")
             )
             .select_from(DailyPass)
+            .join(Gym, cast(DailyPass.gym_id, Integer) == Gym.gym_id)  # Inner join - exclude if gym not found
             .outerjoin(Client, cast(DailyPass.client_id, Integer) == Client.client_id)
-            .outerjoin(Gym, cast(DailyPass.gym_id, Integer) == Gym.gym_id)
             .outerjoin(GymOwner, Gym.owner_id == GymOwner.owner_id)
             .outerjoin(Payment, DailyPass.payment_id == Payment.provider_payment_id)
+            .where(DailyPass.gym_id != "1")  # Exclude gym_id = 1
         )
 
         # Build SessionPurchase subquery with type label (only paid status)
@@ -80,10 +81,11 @@ async def get_all_purchases(
                 Client.platform.label("platform")
             )
             .select_from(SessionPurchase)
+            .join(Gym, SessionPurchase.gym_id == Gym.gym_id)  # Inner join - exclude if gym not found
             .outerjoin(Client, SessionPurchase.client_id == Client.client_id)
-            .outerjoin(Gym, SessionPurchase.gym_id == Gym.gym_id)
             .outerjoin(GymOwner, Gym.owner_id == GymOwner.owner_id)
             .where(SessionPurchase.status == "paid")
+            .where(SessionPurchase.gym_id != 1)  # Exclude gym_id = 1
         )
 
         # Apply search filters to both subqueries if search is provided
@@ -207,35 +209,78 @@ async def get_all_purchases(
             except Exception:
                 return []
 
-        # Fetch scheduled dates for daily passes and sessions
+        # Fetch scheduled dates and status for daily passes and sessions
         daily_pass_ids = [row.id for row in rows if row.type == "Daily Pass"]
         session_ids = [row.id for row in rows if row.type == "Session"]
 
         daily_pass_dates = {}
+        daily_pass_statuses = {}
         if daily_pass_ids:
             dp_dates_query = (
-                select(DailyPassDay.pass_id, DailyPassDay.scheduled_date)
+                select(DailyPassDay.pass_id, DailyPassDay.scheduled_date, DailyPassDay.status)
                 .where(DailyPassDay.pass_id.in_(daily_pass_ids))
                 .order_by(DailyPassDay.scheduled_date)
             )
             dp_dates_result = await db.execute(dp_dates_query)
             for dp_row in dp_dates_result.all():
-                daily_pass_dates.setdefault(dp_row.pass_id, []).append(
-                    dp_row.scheduled_date.isoformat() if dp_row.scheduled_date else None
-                )
+                pass_id = dp_row.pass_id
+                date_str = dp_row.scheduled_date.isoformat() if dp_row.scheduled_date else None
+                daily_pass_dates.setdefault(pass_id, []).append(date_str)
+                # Collect all statuses for this pass
+                if pass_id not in daily_pass_statuses:
+                    daily_pass_statuses[pass_id] = []
+                if dp_row.status:
+                    daily_pass_statuses[pass_id].append(dp_row.status)
 
         session_dates = {}
+        session_statuses = {}
         if session_ids:
             sb_dates_query = (
-                select(SessionBookingDay.purchase_id, SessionBookingDay.booking_date)
+                select(SessionBookingDay.purchase_id, SessionBookingDay.booking_date, SessionBookingDay.status)
                 .where(SessionBookingDay.purchase_id.in_(session_ids))
                 .order_by(SessionBookingDay.booking_date)
             )
             sb_dates_result = await db.execute(sb_dates_query)
-            for sb_row in sb_dates_result.all():
-                session_dates.setdefault(sb_row.purchase_id, []).append(
-                    sb_row.booking_date.isoformat() if sb_row.booking_date else None
-                )
+            sb_rows = sb_dates_result.all()
+            print(f"[ALL_PURCHASES] session_ids: {session_ids[:5]}... (showing first 5)")
+            print(f"[ALL_PURCHASES] SessionBookingDay query returned {len(sb_rows)} rows")
+            for sb_row in sb_rows:
+                purchase_id = sb_row.purchase_id
+                date_str = sb_row.booking_date.isoformat() if sb_row.booking_date else None
+                session_dates.setdefault(purchase_id, []).append(date_str)
+                # Collect all statuses for this purchase (status is always present)
+                if purchase_id not in session_statuses:
+                    session_statuses[purchase_id] = []
+                session_statuses[purchase_id].append(sb_row.status)
+            print(f"[ALL_PURCHASES] session_statuses keys: {list(session_statuses.keys())[:5]}... (showing first 5)")
+
+        # Helper function to determine overall status
+        # Priority: canceled > missed > rescheduled > scheduled > attended
+        def get_overall_status(statuses):
+            if not statuses:
+                return None
+
+            # Map database status values to frontend values
+            status_mapping = {
+                "booked": "scheduled",
+                "cancelled": "canceled",
+                "attended": "attended",
+                "no_show": "missed",
+                "refunded": "canceled"
+            }
+
+            # Map all statuses to frontend values
+            mapped_statuses = [status_mapping.get(s, s) for s in statuses]
+
+            status_priority = {
+                "canceled": 5,
+                "missed": 4,
+                "rescheduled": 3,
+                "scheduled": 2,
+                "attended": 1
+            }
+            # Return the status with highest priority
+            return max(mapped_statuses, key=lambda s: status_priority.get(s, 0))
 
         # Format response
         purchases = []
@@ -262,11 +307,17 @@ async def get_all_purchases(
                 purchase["session_display"] = None
                 purchase["session_schedule"] = []
                 purchase["scheduled_date"] = daily_pass_dates.get(row.id, [])
+                # Determine overall status for daily pass
+                statuses = daily_pass_statuses.get(row.id, [])
+                purchase["status"] = get_overall_status(statuses)
             else:  # Session
                 purchase["days_total"] = None
                 purchase["session_display"] = get_session_display(row.scheduled_sessions)
                 purchase["session_schedule"] = get_session_schedule(row.scheduled_sessions)
                 purchase["scheduled_date"] = session_dates.get(row.id, [])
+                # Determine overall status for session
+                statuses = session_statuses.get(row.id, [])
+                purchase["status"] = get_overall_status(statuses)
 
             purchases.append(purchase)
 
