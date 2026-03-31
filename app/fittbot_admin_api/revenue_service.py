@@ -174,7 +174,6 @@ async def get_daily_pass_revenue(
         return int(revenue)
 
     except Exception as e:
-        print(f"[REVENUE_SERVICE] Error fetching Daily Pass: {e}")
         return 0
 
 
@@ -231,18 +230,13 @@ async def get_sessions_revenue(
             .where(and_(*conditions))
         )
 
-        print(f"[REVENUE_SERVICE] Sessions query: {start_date} to {end_date}, exclude_gym_1={exclude_gym_id_one}")
-
         result = await db.execute(stmt)
         revenue_rupees = result.scalar() or 0
-
-        print(f"[REVENUE_SERVICE] Sessions revenue (rupees): {revenue_rupees}")
 
         # Convert RUPEES to PAISA for consistency
         return int(revenue_rupees * 100) if revenue_rupees else 0
 
     except Exception as e:
-        print(f"[REVENUE_SERVICE] Error fetching Sessions: {e}")
         import traceback
         traceback.print_exc()
         return 0
@@ -307,7 +301,7 @@ async def get_fittbot_subscription_revenue(
             total_revenue += payment_from_order_result.scalar() or 0
 
     except Exception as e:
-        print(f"[REVENUE_SERVICE] Error fetching Fittbot Subscription (Method 1): {e}")
+        pass
 
     # METHOD 2: Direct query on payments table (provider = 'google_play')
     # Note: This catches Google Play payments that may not have 'sub_%' in provider_order_id
@@ -337,7 +331,7 @@ async def get_fittbot_subscription_revenue(
         total_revenue += result_2.scalar() or 0
 
     except Exception as e:
-        print(f"[REVENUE_SERVICE] Error fetching Fittbot Subscription (Method 2): {e}")
+        pass
 
     return int(total_revenue)
 
@@ -368,7 +362,7 @@ async def get_gym_membership_revenue(
         Revenue in PAISA
     """
     try:
-        print(f"[REVENUE_SERVICE] Gym Membership query: {start_date} to {end_date}, exclude_gym_1={exclude_gym_id_one}")
+        # print(f"[REVENUE_SERVICE] Gym Membership query: {start_date} to {end_date}, exclude_gym_1={exclude_gym_id_one}")
 
         # Fetch payments and orders
         conditions = [
@@ -386,7 +380,7 @@ async def get_gym_membership_revenue(
         payment_result = await db.execute(payment_stmt)
         payments = payment_result.all()
 
-        print(f"[REVENUE_SERVICE] Gym Membership - Found {len(payments)} payments")
+        # print(f"[REVENUE_SERVICE] Gym Membership - Found {len(payments)} payments")
 
         if not payments:
             return 0
@@ -412,7 +406,7 @@ async def get_gym_membership_revenue(
         order_items_result = await db.execute(order_items_stmt)
         order_items = order_items_result.scalars().all()
 
-        print(f"[REVENUE_SERVICE] Gym Membership - Found {len(order_items)} order items after gym filter")
+        # print(f"[REVENUE_SERVICE] Gym Membership - Found {len(order_items)} order items after gym filter")
 
         # Create mapping: order_id -> gym_id
         order_gym_mapping = {}
@@ -460,12 +454,12 @@ async def get_gym_membership_revenue(
             matching_orders += 1
             total_revenue += order.gross_amount_minor or 0
 
-        print(f"[REVENUE_SERVICE] Gym Membership - Found {matching_orders} matching orders, total revenue: {total_revenue}")
+        # print(f"[REVENUE_SERVICE] Gym Membership - Found {matching_orders} matching orders, total revenue: {total_revenue}")
 
         return int(total_revenue)
 
     except Exception as e:
-        print(f"[REVENUE_SERVICE] Error fetching Gym Membership: {e}")
+        # print(f"[REVENUE_SERVICE] Error fetching Gym Membership: {e}")
         import traceback
         traceback.print_exc()
         return 0
@@ -600,7 +594,7 @@ async def get_amortized_fittbot_subscription_revenue(
                 total_revenue += mrr_contribution
 
     except Exception as e:
-        print(f"[REVENUE_SERVICE] Error fetching amortized Fittbot Subscription: {e}")
+        pass
 
     return total_revenue
 
@@ -770,7 +764,6 @@ async def get_amortized_gym_membership_revenue(
                 total_revenue += monthly_amount
 
     except Exception as e:
-        print(f"[REVENUE_SERVICE] Error fetching amortized Gym Membership: {e}")
         import traceback
         traceback.print_exc()
 
@@ -1000,7 +993,7 @@ async def _get_daily_pass_detailed(
         dailypass_session.close()
 
     except Exception as e:
-        print(f"[REVENUE_SERVICE] Error in _get_daily_pass_detailed: {e}")
+        pass
 
 
 async def _get_sessions_detailed(
@@ -1064,7 +1057,7 @@ async def _get_sessions_detailed(
                 gym_revenue[purchase.gym_id] += amount_paisa
 
     except Exception as e:
-        print(f"[REVENUE_SERVICE] Error in _get_sessions_detailed: {e}")
+        pass
 
 
 async def _get_fittbot_subscription_detailed(
@@ -1114,7 +1107,7 @@ async def _get_fittbot_subscription_detailed(
                     daily_revenue[date_key] += amount
 
     except Exception as e:
-        print(f"[REVENUE_SERVICE] Error in _get_fittbot_subscription_detailed (Method 1): {e}")
+        pass
 
     # METHOD 2: Direct query on payments (provider = 'google_play')
     try:
@@ -1150,7 +1143,7 @@ async def _get_fittbot_subscription_detailed(
                 daily_revenue[date_key] += amount
 
     except Exception as e:
-        print(f"[REVENUE_SERVICE] Error in _get_fittbot_subscription_detailed (Method 2): {e}")
+        pass
 
 
 async def _get_gym_membership_detailed(
@@ -1260,7 +1253,6 @@ async def _get_gym_membership_detailed(
                 gym_revenue[gym_key] += amount
 
     except Exception as e:
-        print(f"[REVENUE_SERVICE] Error in _get_gym_membership_detailed: {e}")
         import traceback
         traceback.print_exc()
 
