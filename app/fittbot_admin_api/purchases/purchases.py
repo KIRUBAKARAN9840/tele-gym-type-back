@@ -26,10 +26,16 @@ async def get_all_purchases(
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
     search: Optional[str] = Query(None, description="Search by client or gym name"),
     type: Optional[str] = Query(None, description="Filter by type: 'Session' or 'Daily Pass'"),
+    start_date: Optional[str] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_async_db)
 ):
     try:
         search_pattern = f"%{search}%" if search else None
+
+        # Parse dates if provided
+        start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
 
         # Build DailyPass subquery with type label
         daily_pass_query = (
@@ -105,6 +111,14 @@ async def get_all_purchases(
                     Gym.name.ilike(search_pattern)
                 )
             )
+
+        # Apply date filters to both subqueries if provided
+        if start_date_obj:
+            daily_pass_query = daily_pass_query.where(func.date(DailyPass.created_at) >= start_date_obj)
+            session_purchase_query = session_purchase_query.where(func.date(SessionPurchase.created_at) >= start_date_obj)
+        if end_date_obj:
+            daily_pass_query = daily_pass_query.where(func.date(DailyPass.created_at) <= end_date_obj)
+            session_purchase_query = session_purchase_query.where(func.date(SessionPurchase.created_at) <= end_date_obj)
 
         # Combine both queries with UNION ALL
         combined_query = union_all(daily_pass_query, session_purchase_query).alias("combined_purchases")
@@ -744,6 +758,8 @@ async def get_gym_memberships(
 async def export_purchases(
     search: Optional[str] = Query(None, description="Search by client or gym name"),
     type: Optional[str] = Query(None, description="Filter by type: 'Session' or 'Daily Pass'"),
+    start_date: Optional[str] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -752,6 +768,10 @@ async def export_purchases(
     """
     try:
         search_pattern = f"%{search}%" if search else None
+
+        # Parse dates if provided
+        start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
 
         # Build DailyPass subquery with type label
         daily_pass_query = (
@@ -817,6 +837,14 @@ async def export_purchases(
                     Gym.name.ilike(search_pattern)
                 )
             )
+
+        # Apply date filters to both subqueries if provided
+        if start_date_obj:
+            daily_pass_query = daily_pass_query.where(func.date(DailyPass.created_at) >= start_date_obj)
+            session_purchase_query = session_purchase_query.where(func.date(SessionPurchase.created_at) >= start_date_obj)
+        if end_date_obj:
+            daily_pass_query = daily_pass_query.where(func.date(DailyPass.created_at) <= end_date_obj)
+            session_purchase_query = session_purchase_query.where(func.date(SessionPurchase.created_at) <= end_date_obj)
 
         # Combine both queries with UNION ALL
         combined_query = union_all(daily_pass_query, session_purchase_query).alias("combined_purchases")
