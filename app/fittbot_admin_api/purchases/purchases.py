@@ -28,6 +28,8 @@ async def get_all_purchases(
     type: Optional[str] = Query(None, description="Filter by type: 'Session' or 'Daily Pass'"),
     start_date: Optional[str] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
+    distinct_clients: Optional[bool] = Query(False, description="Show only distinct clients (1 booking across all types)"),
+    distinct_gyms: Optional[bool] = Query(False, description="Show only distinct gyms (1 booking across all types)"),
     db: AsyncSession = Depends(get_async_db)
 ):
     try:
@@ -123,11 +125,158 @@ async def get_all_purchases(
         # Combine both queries with UNION ALL
         combined_query = union_all(daily_pass_query, session_purchase_query).alias("combined_purchases")
 
+        # Build distinct filtering subqueries (if distinct filter is requested)
+        distinct_client_filter = None
+        distinct_gym_filter = None
+
+        if distinct_clients or distinct_gyms:
+            # Get gym memberships base data for distinct calculation
+            gym_membership_data_query = (
+                select(
+                    Order.customer_id.label("client_id"),
+                    OrderItem.gym_id.label("gym_id"),
+                    Order.order_metadata.label("order_metadata")
+                )
+                .select_from(Payment)
+                .join(Order, Order.id == Payment.order_id)
+                .join(OrderItem, OrderItem.order_id == Order.id)
+                .where(Payment.status == "captured")
+                .where(Order.status == "paid")
+                .where(OrderItem.gym_id.isnot(None))
+                .where(OrderItem.gym_id != "1")
+            )
+
+            # Apply date filters to gym memberships
+            if start_date_obj:
+                gym_membership_data_query = gym_membership_data_query.where(func.date(Payment.created_at) >= start_date_obj)
+            if end_date_obj:
+                gym_membership_data_query = gym_membership_data_query.where(func.date(Payment.created_at) <= end_date_obj)
+
+            gm_result = await db.execute(gym_membership_data_query)
+            gm_rows = gm_result.all()
+
+            # Filter by metadata conditions
+            valid_client_ids = []
+            valid_gym_ids = []
+            for row in gm_rows:
+                metadata = row.order_metadata
+                if not metadata or not isinstance(metadata, dict):
+                    continue
+
+                condition1 = (
+                    metadata.get("audit") and isinstance(metadata.get("audit"), dict) and
+                    metadata["audit"].get("source") == "dailypass_checkout_api"
+                )
+                condition2 = (
+                    metadata.get("order_info") and isinstance(metadata.get("order_info"), dict) and
+                    metadata["order_info"].get("flow") == "unified_gym_membership_with_sub"
+                )
+                condition3 = (
+                    metadata.get("order_info") and isinstance(metadata.get("order_info"), dict) and
+                    metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot"
+                )
+
+                if condition1 or condition2 or condition3:
+                    if row.client_id:
+                        try:
+                            valid_client_ids.append(int(row.client_id))
+                        except:
+                            pass
+                    if row.gym_id and row.gym_id.isdigit():
+                        valid_gym_ids.append(int(row.gym_id))
+
+            # Build distinct client filter (clients with exactly 1 booking total)
+            if distinct_clients:
+                # Count bookings per client from sessions/daily passes
+                session_client_counts = (
+                    select(
+                        combined_query.c.client_name,
+                        func.count().label("booking_count")
+                    )
+                    .select_from(combined_query)
+                    .where(combined_query.c.client_name.isnot(None))
+                    .group_by(combined_query.c.client_name)
+                )
+                if type:
+                    session_client_counts = session_client_counts.where(combined_query.c.type == type)
+                session_client_result = await db.execute(session_client_counts)
+                session_client_counts_map = {row.client_name: row.booking_count for row in session_client_result.all()}
+
+                # Count gym memberships per client
+                gm_client_counts_map = {}
+                if valid_client_ids:
+                    gm_client_query = (
+                        select(Client.name, func.count().label("gm_count"))
+                        .where(Client.client_id.in_(valid_client_ids))
+                        .where(Client.name.isnot(None))
+                        .group_by(Client.name)
+                    )
+                    gm_client_result = await db.execute(gm_client_query)
+                    gm_client_counts_map = {row.name: row.gm_count for row in gm_client_result.all()}
+
+                # Find distinct clients (total count == 1)
+                distinct_client_names = set()
+                for client_name in set(session_client_counts_map.keys()) | set(gm_client_counts_map.keys()):
+                    total = session_client_counts_map.get(client_name, 0) + gm_client_counts_map.get(client_name, 0)
+                    if total == 1:
+                        distinct_client_names.add(client_name)
+
+                if distinct_client_names:
+                    distinct_client_filter = distinct_client_names
+
+            # Build distinct gym filter (gyms with exactly 1 booking total)
+            if distinct_gyms:
+                # Count bookings per gym from sessions/daily passes
+                session_gym_counts = (
+                    select(
+                        combined_query.c.gym_name,
+                        func.count().label("booking_count")
+                    )
+                    .select_from(combined_query)
+                    .where(combined_query.c.gym_name.isnot(None))
+                    .group_by(combined_query.c.gym_name)
+                )
+                if type:
+                    session_gym_counts = session_gym_counts.where(combined_query.c.type == type)
+                session_gym_result = await db.execute(session_gym_counts)
+                session_gym_counts_map = {row.gym_name: row.booking_count for row in session_gym_result.all()}
+
+                # Count gym memberships per gym
+                gm_gym_counts_map = {}
+                if valid_gym_ids:
+                    gm_gym_query = (
+                        select(Gym.name, func.count().label("gm_count"))
+                        .where(Gym.gym_id.in_(valid_gym_ids))
+                        .where(Gym.name.isnot(None))
+                        .group_by(Gym.name)
+                    )
+                    gm_gym_result = await db.execute(gm_gym_query)
+                    gm_gym_counts_map = {row.name: row.gm_count for row in gm_gym_result.all()}
+
+                # Find distinct gyms (total count == 1)
+                distinct_gym_names = set()
+                for gym_name in set(session_gym_counts_map.keys()) | set(gm_gym_counts_map.keys()):
+                    total = session_gym_counts_map.get(gym_name, 0) + gm_gym_counts_map.get(gym_name, 0)
+                    if total == 1:
+                        distinct_gym_names.add(gym_name)
+
+                if distinct_gym_names:
+                    distinct_gym_filter = distinct_gym_names
+
         # Apply type filter to combined query if type is provided
         if type:
             count_query = select(func.count()).select_from(combined_query).where(combined_query.c.type == type)
         else:
             count_query = select(func.count()).select_from(combined_query)
+
+        # Apply distinct client filter
+        if distinct_client_filter:
+            count_query = count_query.where(combined_query.c.client_name.in_(distinct_client_filter))
+
+        # Apply distinct gym filter
+        if distinct_gym_filter:
+            count_query = count_query.where(combined_query.c.gym_name.in_(distinct_gym_filter))
+
         count_result = await db.execute(count_query)
         total = count_result.scalar() or 0
 
@@ -178,6 +327,14 @@ async def get_all_purchases(
         # Apply type filter if provided
         if type:
             final_query = final_query.where(combined_query.c.type == type)
+
+        # Apply distinct client filter
+        if distinct_client_filter:
+            final_query = final_query.where(combined_query.c.client_name.in_(distinct_client_filter))
+
+        # Apply distinct gym filter
+        if distinct_gym_filter:
+            final_query = final_query.where(combined_query.c.gym_name.in_(distinct_gym_filter))
 
         # Execute query (async, non-blocking)
         result = await db.execute(final_query)
@@ -1035,6 +1192,8 @@ async def export_purchases(
     type: Optional[str] = Query(None, description="Filter by type: 'Session' or 'Daily Pass'"),
     start_date: Optional[str] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
+    distinct_clients: Optional[bool] = Query(False, description="Show only distinct clients (1 booking across all types)"),
+    distinct_gyms: Optional[bool] = Query(False, description="Show only distinct gyms (1 booking across all types)"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -1124,6 +1283,144 @@ async def export_purchases(
         # Combine both queries with UNION ALL
         combined_query = union_all(daily_pass_query, session_purchase_query).alias("combined_purchases")
 
+        # Build distinct filtering subqueries (if distinct filter is requested)
+        distinct_client_filter = None
+        distinct_gym_filter = None
+
+        if distinct_clients or distinct_gyms:
+            # Get gym memberships base data for distinct calculation
+            gym_membership_data_query = (
+                select(
+                    Order.customer_id.label("client_id"),
+                    OrderItem.gym_id.label("gym_id"),
+                    Order.order_metadata.label("order_metadata")
+                )
+                .select_from(Payment)
+                .join(Order, Order.id == Payment.order_id)
+                .join(OrderItem, OrderItem.order_id == Order.id)
+                .where(Payment.status == "captured")
+                .where(Order.status == "paid")
+                .where(OrderItem.gym_id.isnot(None))
+                .where(OrderItem.gym_id != "1")
+            )
+
+            # Apply date filters to gym memberships
+            if start_date_obj:
+                gym_membership_data_query = gym_membership_data_query.where(func.date(Payment.created_at) >= start_date_obj)
+            if end_date_obj:
+                gym_membership_data_query = gym_membership_data_query.where(func.date(Payment.created_at) <= end_date_obj)
+
+            gm_result = await db.execute(gym_membership_data_query)
+            gm_rows = gm_result.all()
+
+            # Filter by metadata conditions
+            valid_client_ids = []
+            valid_gym_ids = []
+            for row in gm_rows:
+                metadata = row.order_metadata
+                if not metadata or not isinstance(metadata, dict):
+                    continue
+
+                condition1 = (
+                    metadata.get("audit") and isinstance(metadata.get("audit"), dict) and
+                    metadata["audit"].get("source") == "dailypass_checkout_api"
+                )
+                condition2 = (
+                    metadata.get("order_info") and isinstance(metadata.get("order_info"), dict) and
+                    metadata["order_info"].get("flow") == "unified_gym_membership_with_sub"
+                )
+                condition3 = (
+                    metadata.get("order_info") and isinstance(metadata.get("order_info"), dict) and
+                    metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot"
+                )
+
+                if condition1 or condition2 or condition3:
+                    if row.client_id:
+                        try:
+                            valid_client_ids.append(int(row.client_id))
+                        except:
+                            pass
+                    if row.gym_id and row.gym_id.isdigit():
+                        valid_gym_ids.append(int(row.gym_id))
+
+            # Build distinct client filter (clients with exactly 1 booking total)
+            if distinct_clients:
+                # Count bookings per client from sessions/daily passes
+                session_client_counts = (
+                    select(
+                        combined_query.c.client_name,
+                        func.count().label("booking_count")
+                    )
+                    .select_from(combined_query)
+                    .where(combined_query.c.client_name.isnot(None))
+                    .group_by(combined_query.c.client_name)
+                )
+                if type:
+                    session_client_counts = session_client_counts.where(combined_query.c.type == type)
+                session_client_result = await db.execute(session_client_counts)
+                session_client_counts_map = {row.client_name: row.booking_count for row in session_client_result.all()}
+
+                # Count gym memberships per client
+                gm_client_counts_map = {}
+                if valid_client_ids:
+                    gm_client_query = (
+                        select(Client.name, func.count().label("gm_count"))
+                        .where(Client.client_id.in_(valid_client_ids))
+                        .where(Client.name.isnot(None))
+                        .group_by(Client.name)
+                    )
+                    gm_client_result = await db.execute(gm_client_query)
+                    gm_client_counts_map = {row.name: row.gm_count for row in gm_client_result.all()}
+
+                # Find distinct clients (total count == 1)
+                distinct_client_names = set()
+                for client_name in set(session_client_counts_map.keys()) | set(gm_client_counts_map.keys()):
+                    total = session_client_counts_map.get(client_name, 0) + gm_client_counts_map.get(client_name, 0)
+                    if total == 1:
+                        distinct_client_names.add(client_name)
+
+                if distinct_client_names:
+                    distinct_client_filter = distinct_client_names
+
+            # Build distinct gym filter (gyms with exactly 1 booking total)
+            if distinct_gyms:
+                # Count bookings per gym from sessions/daily passes
+                session_gym_counts = (
+                    select(
+                        combined_query.c.gym_name,
+                        func.count().label("booking_count")
+                    )
+                    .select_from(combined_query)
+                    .where(combined_query.c.gym_name.isnot(None))
+                    .group_by(combined_query.c.gym_name)
+                )
+                if type:
+                    session_gym_counts = session_gym_counts.where(combined_query.c.type == type)
+                session_gym_result = await db.execute(session_gym_counts)
+                session_gym_counts_map = {row.gym_name: row.booking_count for row in session_gym_result.all()}
+
+                # Count gym memberships per gym
+                gm_gym_counts_map = {}
+                if valid_gym_ids:
+                    gm_gym_query = (
+                        select(Gym.name, func.count().label("gm_count"))
+                        .where(Gym.gym_id.in_(valid_gym_ids))
+                        .where(Gym.name.isnot(None))
+                        .group_by(Gym.name)
+                    )
+                    gm_gym_result = await db.execute(gm_gym_query)
+                    gm_gym_counts_map = {row.name: row.gm_count for row in gm_gym_result.all()}
+
+                # Find distinct gyms (total count == 1)
+                distinct_gym_names = set()
+                for gym_name in set(session_gym_counts_map.keys()) | set(gm_gym_counts_map.keys()):
+                    total = session_gym_counts_map.get(gym_name, 0) + gm_gym_counts_map.get(gym_name, 0)
+                    if total == 1:
+                        distinct_gym_names.add(gym_name)
+
+                if distinct_gym_names:
+                    distinct_gym_filter = distinct_gym_names
+
         # Build the final query from the union result (no pagination for export)
         final_query = (
             select(
@@ -1148,6 +1445,14 @@ async def export_purchases(
         # Apply type filter if provided
         if type:
             final_query = final_query.where(combined_query.c.type == type)
+
+        # Apply distinct client filter
+        if distinct_client_filter:
+            final_query = final_query.where(combined_query.c.client_name.in_(distinct_client_filter))
+
+        # Apply distinct gym filter
+        if distinct_gym_filter:
+            final_query = final_query.where(combined_query.c.gym_name.in_(distinct_gym_filter))
 
         # Execute query
         result = await db.execute(final_query)
