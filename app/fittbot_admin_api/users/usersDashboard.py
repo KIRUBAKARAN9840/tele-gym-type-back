@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, or_, and_, desc, asc, case, literal_column, String, select, over, union_all, cast, DateTime as SQLDateTime
+from sqlalchemy import func, or_, and_, desc, asc, case, literal_column, String, select, over, union_all, cast, DateTime as SQLDateTime, distinct
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 from app.models.fittbot_models import (
@@ -15,6 +15,7 @@ from app.models.fittbot_models import (
     SessionPurchase,
     ClassSession,
     FittbotGymMembership,
+    ActiveUser,
 )
 from app.models.dailypass_models import DailyPass, get_dailypass_session
 from app.models.async_database import get_async_db
@@ -22,6 +23,7 @@ from app.fittbot_api.v1.payments.models.subscriptions import Subscription
 from app.fittbot_api.v1.payments.models.payments import Payment
 from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
 import math
+import calendar
 
 # IST timezone
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -1565,6 +1567,98 @@ async def get_users_overview(
             "total_platform_users": total_platform_users
         }
 
+        # 5. Calculate Active Users Metrics (Monthly and Weekly averages)
+        # Uses same logic as financials API
+        from calendar import monthrange
+
+        today_utc = datetime.now(timezone.utc).date()
+
+        # Get gym_id if gym name is provided
+        filter_gym_id = None
+        if gym:
+            gym_stmt = select(Gym.gym_id).where(Gym.name == gym)
+            gym_result = await db.execute(gym_stmt)
+            filter_gym_id = gym_result.scalar_one_or_none()
+
+        # Helper function to get active users count
+        async def get_active_count(start_date, end_date):
+            try:
+                # Active users: users with at least 1 login in the date range
+                conditions = [
+                    func.date(ActiveUser.created_at) >= start_date,
+                    func.date(ActiveUser.created_at) <= end_date,
+                    Client.gym_id != 1
+                ]
+
+                if filter_gym_id is not None:
+                    conditions.append(Client.gym_id == filter_gym_id)
+
+                subquery = select(ActiveUser.client_id).join(
+                    Client, ActiveUser.client_id == Client.client_id
+                ).where(
+                    and_(*conditions)
+                )
+
+                count_query = select(func.coalesce(func.count(distinct(ActiveUser.client_id)), 0)).where(
+                    ActiveUser.client_id.in_(subquery)
+                )
+
+                count_result = await db.execute(count_query)
+                return int(count_result.scalar() or 0)
+            except Exception as e:
+                print(f"[ACTIVE_USERS_METRICS] Error: {e}")
+                return 0
+
+        # Monthly Average Users (last 3 completed months)
+        monthly_counts = []
+        current_year = today_utc.year
+        current_month = today_utc.month
+
+        for i in range(3):
+            month_index = current_month - 1 - i
+            year = current_year
+
+            while month_index < 0:
+                month_index += 12
+                year -= 1
+
+            month_start = datetime(year, month_index + 1, 1).date()
+            _, last_day = monthrange(year, month_index + 1)
+            month_end = datetime(year, month_index + 1, last_day).date()
+
+            count = await get_active_count(month_start, month_end)
+            monthly_counts.append(count)
+
+        monthly_average = sum(monthly_counts) / 3
+
+        # Weekly Average Users (last 3 completed weeks)
+        weekly_counts = []
+        yesterday = today_utc - timedelta(days=1)
+
+        for i in range(3):
+            week_end = yesterday - timedelta(weeks=i)
+            week_start = week_end - timedelta(days=6)
+            count = await get_active_count(week_start, week_end)
+            weekly_counts.append(count)
+
+        weekly_average = sum(weekly_counts) / 3
+
+        # Daily Average Users (last 3 completed days)
+        # Each day is calculated separately, then averaged
+        daily_counts = []
+        for i in range(3):
+            day = today_utc - timedelta(days=i + 1)  # Start from yesterday (i+1 to skip today)
+            count = await get_active_count(day, day)
+            daily_counts.append(count)
+
+        daily_average = sum(daily_counts) / 3
+
+        active_users_metrics_data = {
+            "monthly_average_users": round(monthly_average, 0),
+            "weekly_average_users": round(weekly_average, 0),
+            "daily_average_users": round(daily_average, 0)
+        }
+
         # 4. Get paginated users with all filters
         latest_sub = await build_subscription_subquery(db, now)
 
@@ -1705,7 +1799,8 @@ async def get_users_overview(
                 "plans": plans_data,
                 "clientCounts": client_counts_data,
                 "onlineOfflineCounts": online_offline_counts_data,
-                "platformCounts": platform_counts_data
+                "platformCounts": platform_counts_data,
+                "activeUsersMetrics": active_users_metrics_data
             },
             "message": "Users overview fetched successfully"
         }

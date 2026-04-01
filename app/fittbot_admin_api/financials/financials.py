@@ -98,12 +98,7 @@ async def get_active_users_count(
     end_date
 ):
     try:
-        # Check if single day is selected
-        is_single_day = start_date == end_date
-
-        # For single day: at least 1 entry; for multiple days: at least 2 distinct days
-        min_entries = 1 if is_single_day else 2
-
+        # Active users: users with at least 1 login in the date range
         subquery = select(ActiveUser.client_id).join(
             Client, ActiveUser.client_id == Client.client_id
         ).where(
@@ -112,10 +107,6 @@ async def get_active_users_count(
                 func.date(ActiveUser.created_at) <= end_date,
                 Client.gym_id != 1
             )
-        ).group_by(
-            ActiveUser.client_id
-        ).having(
-            func.count(func.distinct(func.date(ActiveUser.created_at))) >= min_entries
         )
 
         count_query = select(func.coalesce(func.count(distinct(ActiveUser.client_id)), 0)).where(

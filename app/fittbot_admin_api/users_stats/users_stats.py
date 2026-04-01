@@ -47,12 +47,10 @@ async def get_users_stats(
         total_count = total_result.scalar() or 0
 
         # Query 2: Count distinct client_id from active_users where created_at >= 30 days ago
-        # Only include client_ids that have at least 2 rows with different dates
+        # Active users: users with at least 1 login in the last 30 days
         # Exclude users from gym_id = 1
         thirty_days_ago = datetime.now() - timedelta(days=30)
 
-        # Subquery: Find client_ids that have at least 2 distinct dates in the last 30 days
-        # Join with Client to filter by gym_id != 1
         active_subquery = select(ActiveUser.client_id).join(
             Client, ActiveUser.client_id == Client.client_id
         ).where(
@@ -60,13 +58,8 @@ async def get_users_stats(
                 ActiveUser.created_at >= thirty_days_ago,
                 Client.gym_id != 1
             )
-        ).group_by(
-            ActiveUser.client_id
-        ).having(
-            func.count(func.distinct(func.date(ActiveUser.created_at))) >= 2
         )
 
-        # Main query: Count distinct client_ids (each qualifying client = 1)
         active_query = select(
             func.coalesce(func.count(func.distinct(ActiveUser.client_id)), 0)
         ).where(
