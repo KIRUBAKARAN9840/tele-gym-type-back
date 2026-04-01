@@ -836,6 +836,10 @@ async def get_gym_memberships(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
     search: Optional[str] = Query(None, description="Search by client name, contact, or gym name"),
+    start_date: Optional[str] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
+    distinct_clients: Optional[bool] = Query(False, description="Show only distinct clients (1 booking across all types)"),
+    distinct_gyms: Optional[bool] = Query(False, description="Show only distinct gyms (1 booking across all types)"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -845,6 +849,9 @@ async def get_gym_memberships(
     and rows where gym_id is not in gyms table.
     """
     try:
+        # Parse dates if provided
+        start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
         # Fetch all gym memberships using Order-based approach (same as Financials API)
         gym_membership_stmt = (
             select(Payment, Order)
@@ -919,6 +926,18 @@ async def get_gym_memberships(
                 "payment": payment,
                 "gym_id": order_gym_id_mapping[order.id]
             })
+
+        # Apply date filters if provided
+        if start_date_obj or end_date_obj:
+            filtered_orders = []
+            for item in valid_orders:
+                purchase_date = item["order"].created_at.date() if hasattr(item["order"].created_at, 'date') else item["order"].created_at
+                if start_date_obj and purchase_date < start_date_obj:
+                    continue
+                if end_date_obj and purchase_date > end_date_obj:
+                    continue
+                filtered_orders.append(item)
+            valid_orders = filtered_orders
 
         # Get total count for pagination
         total = len(valid_orders)
@@ -1155,6 +1174,19 @@ async def get_gym_memberships(
             )
             if total_count == 1:
                 final_distinct_gyms.append(gym_name)
+
+        # Apply distinct filters (must be after distinct calculation)
+        if distinct_clients or distinct_gyms:
+            memberships = [
+                m for m in memberships
+                if (not distinct_clients or (m.get("client_name") and m["client_name"] in final_distinct_clients)) and
+                   (not distinct_gyms or (m.get("gym_name") and m["gym_name"] in final_distinct_gyms))
+            ]
+            # Update total and pagination after filtering
+            total = len(memberships)
+            total_pages = (total + limit - 1) // limit if total > 0 else 0
+            has_next = page < total_pages
+            has_prev = page > 1
 
         return {
             "success": True,
@@ -1737,6 +1769,11 @@ async def export_today_schedule(
 
 @router.get("/export-gym-memberships")
 async def export_gym_memberships(
+    search: Optional[str] = Query(None, description="Search by client or gym name"),
+    start_date: Optional[str] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
+    distinct_clients: Optional[bool] = Query(False, description="Show only distinct clients (1 booking across all types)"),
+    distinct_gyms: Optional[bool] = Query(False, description="Show only distinct gyms (1 booking across all types)"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -1745,6 +1782,7 @@ async def export_gym_memberships(
     Returns all memberships (without pagination) for export purposes.
     Excludes gym_id = 1, rows where client_id is not in clients table,
     and rows where gym_id is not in gyms table.
+    Supports filtering by search, date range, and distinct clients/gyms.
     """
     try:
         # Fetch all gym memberships using Order-based approach (same as Financials API)
@@ -1754,6 +1792,24 @@ async def export_gym_memberships(
             .where(Payment.status == "captured")
             .where(Order.status == "paid")
         )
+
+        # Apply date filter
+        if start_date:
+            try:
+                start_datetime = datetime.strptime(start_date, "%Y-%m-%d")
+                gym_membership_stmt = gym_membership_stmt.where(Order.created_at >= start_datetime)
+            except ValueError:
+                pass
+
+        if end_date:
+            try:
+                end_datetime = datetime.strptime(end_date, "%Y-%m-%d")
+                # Include the entire end date
+                end_datetime = end_datetime + timedelta(days=1)
+                gym_membership_stmt = gym_membership_stmt.where(Order.created_at < end_datetime)
+            except ValueError:
+                pass
+
         gym_membership_result = await db.execute(gym_membership_stmt)
         all_payments = gym_membership_result.all()
 
@@ -1850,6 +1906,87 @@ async def export_gym_memberships(
             cell.font = header_font
             cell.fill = header_fill
 
+        # Calculate distinct clients and gyms if filters are enabled
+        distinct_clients_set = set()
+        distinct_gyms_set = set()
+
+        if distinct_clients or distinct_gyms:
+            # Count sessions (fitness classes) by client/gym
+            session_client_counts = {}
+            session_gym_counts = {}
+
+            session_orders_stmt = (
+                select(Order)
+                .join(Payment, Payment.order_id == Order.id)
+                .where(Payment.status == "captured")
+                .where(Order.status == "paid")
+                .where(Order.type == "Session")
+            )
+
+            session_result = await db.execute(session_orders_stmt)
+            session_orders = session_result.scalars().all()
+
+            for order in session_orders:
+                if order.customer_id:
+                    session_client_counts[str(order.customer_id)] = session_client_counts.get(str(order.customer_id), 0) + 1
+                if order.gym_id:
+                    session_gym_counts[str(order.gym_id)] = session_gym_counts.get(str(order.gym_id), 0) + 1
+
+            # Count daily passes by client/gym
+            daily_pass_client_counts = {}
+            daily_pass_gym_counts = {}
+
+            daily_pass_orders_stmt = (
+                select(Order)
+                .join(Payment, Payment.order_id == Order.id)
+                .where(Payment.status == "captured")
+                .where(Order.status == "paid")
+                .where(Order.type == "Daily Pass")
+            )
+
+            daily_pass_result = await db.execute(daily_pass_orders_stmt)
+            daily_pass_orders = daily_pass_result.scalars().all()
+
+            for order in daily_pass_orders:
+                if order.customer_id:
+                    daily_pass_client_counts[str(order.customer_id)] = daily_pass_client_counts.get(str(order.customer_id), 0) + 1
+                if order.gym_id:
+                    daily_pass_gym_counts[str(order.gym_id)] = daily_pass_gym_counts.get(str(order.gym_id), 0) + 1
+
+            # Collect gym membership clients/gyms from valid_orders
+            gym_membership_client_ids = set()
+            gym_membership_gym_ids = set()
+
+            for item in valid_orders:
+                if item["order"].customer_id:
+                    gym_membership_client_ids.add(str(item["order"].customer_id))
+                if item["gym_id"]:
+                    gym_membership_gym_ids.add(item["gym_id"])
+
+            # Calculate total bookings and identify distinct clients
+            all_client_ids = set(session_client_counts.keys()) | set(daily_pass_client_counts.keys()) | gym_membership_client_ids
+
+            for client_id in all_client_ids:
+                session_count = session_client_counts.get(client_id, 0)
+                daily_pass_count = daily_pass_client_counts.get(client_id, 0)
+                gym_membership_count = 1 if client_id in gym_membership_client_ids else 0
+                total = session_count + daily_pass_count + gym_membership_count
+
+                if total == 1:
+                    distinct_clients_set.add(client_id)
+
+            # Calculate total bookings and identify distinct gyms
+            all_gym_ids = set(session_gym_counts.keys()) | set(daily_pass_gym_counts.keys()) | gym_membership_gym_ids
+
+            for gym_id in all_gym_ids:
+                session_count = session_gym_counts.get(gym_id, 0)
+                daily_pass_count = daily_pass_gym_counts.get(gym_id, 0)
+                gym_membership_count = 1 if gym_id in gym_membership_gym_ids else 0
+                total = session_count + daily_pass_count + gym_membership_count
+
+                if total == 1:
+                    distinct_gyms_set.add(gym_id)
+
         # Write data rows
         for item in valid_orders:
             order = item["order"]
@@ -1887,6 +2024,22 @@ async def export_gym_memberships(
                 gym_name = gym.name or "N/A"
             except:
                 continue
+
+            # Apply search filter
+            if search:
+                search_lower = search.lower()
+                if search_lower not in (client_name or "").lower() and search_lower not in (gym_name or "").lower():
+                    continue
+
+            # Apply distinct clients filter
+            if distinct_clients and order.customer_id:
+                if str(order.customer_id) not in distinct_clients_set:
+                    continue
+
+            # Apply distinct gyms filter
+            if distinct_gyms and gym_id_str:
+                if gym_id_str not in distinct_gyms_set:
+                    continue
 
             ws.append([
                 client_name,
