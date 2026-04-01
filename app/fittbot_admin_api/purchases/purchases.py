@@ -348,6 +348,42 @@ async def get_all_purchases(
         has_next = page < total_pages
         has_prev = page > 1
 
+        # Get distinct clients (clients with exactly 1 booking)
+        client_count_query = (
+            select(
+                combined_query.c.client_name,
+                func.count().label("booking_count")
+            )
+            .select_from(combined_query)
+            .where(combined_query.c.client_name.isnot(None))
+            .group_by(combined_query.c.client_name)
+        )
+        if type:
+            client_count_query = client_count_query.where(combined_query.c.type == type)
+
+        client_count_result = await db.execute(client_count_query)
+        distinct_clients = [
+            row.client_name for row in client_count_result.all() if row.booking_count == 1
+        ]
+
+        # Get distinct gyms (gyms with exactly 1 booking)
+        gym_count_query = (
+            select(
+                combined_query.c.gym_name,
+                func.count().label("booking_count")
+            )
+            .select_from(combined_query)
+            .where(combined_query.c.gym_name.isnot(None))
+            .group_by(combined_query.c.gym_name)
+        )
+        if type:
+            gym_count_query = gym_count_query.where(combined_query.c.type == type)
+
+        gym_count_result = await db.execute(gym_count_query)
+        distinct_gyms = [
+            row.gym_name for row in gym_count_result.all() if row.booking_count == 1
+        ]
+
         return {
             "success": True,
             "data": {
@@ -359,7 +395,9 @@ async def get_all_purchases(
                     "totalPages": total_pages,
                     "hasNext": has_next,
                     "hasPrev": has_prev
-                }
+                },
+                "distinctClients": distinct_clients,
+                "distinctGyms": distinct_gyms
             }
         }
 
