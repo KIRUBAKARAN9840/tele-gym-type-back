@@ -83,7 +83,7 @@ async def get_total_paying_users(db: AsyncSession) -> int:
         return 0
 
 async def get_fittbot_metrics(db: AsyncSession, filter_type='month'):
- 
+
     today = datetime.now().date()
 
     # Total users based on filter
@@ -92,6 +92,13 @@ async def get_fittbot_metrics(db: AsyncSession, filter_type='month'):
     )
     result = await db.execute(stmt)
     total_users_today = result.scalar() or 0
+
+    # Yesterday users
+    stmt = select(func.count()).select_from(Client).filter(
+        func.date(Client.created_at) == today - timedelta(days=1)
+    )
+    result = await db.execute(stmt)
+    total_users_yesterday = result.scalar() or 0
 
     stmt = select(func.count()).select_from(Client).filter(
         Client.created_at >= today - timedelta(days=7),
@@ -129,6 +136,7 @@ async def get_fittbot_metrics(db: AsyncSession, filter_type='month'):
     return {
         "totalUsers": {
             "today": total_users_today,
+            "yesterday": total_users_yesterday,
             "week": total_users_week,
             "month": total_users_month,
             "overall": total_users_overall
@@ -2653,6 +2661,241 @@ async def get_purchase_analytics(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/booking-averages")
+async def get_booking_averages(
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Get average bookings for different time periods with source breakdown.
+    Returns monthly average (last 3 months), weekly average (last 3 weeks),
+    and daily average (last 3 days), each broken down by source.
+    """
+    try:
+        today = datetime.now().date()
+
+        # Helper function to get purchases by source for a date range
+        async def get_purchases_by_source(start_date, end_date):
+            """Get purchases from all sources for a date range, broken down by source."""
+            result = {
+                "daily_pass": 0,
+                "sessions": 0,
+                "gym_membership": 0,
+                "fittbot_subscription": 0
+            }
+
+            # 1. Daily Pass purchases
+            try:
+                dailypass_session = get_dailypass_session()
+                dp_count = dailypass_session.query(func.count()).filter(
+                    and_(
+                        func.date(DailyPass.created_at) >= start_date,
+                        func.date(DailyPass.created_at) <= end_date,
+                        DailyPass.gym_id != "1"
+                    )
+                ).scalar()
+                result["daily_pass"] = dp_count or 0
+                dailypass_session.close()
+            except Exception:
+                pass
+
+            # 2. Session purchases (via SessionBookingDay)
+            try:
+                session_count_stmt = select(func.count()).select_from(SessionBookingDay).where(
+                    and_(
+                        func.date(SessionBookingDay.booking_date) >= start_date,
+                        func.date(SessionBookingDay.booking_date) <= end_date,
+                        SessionBookingDay.gym_id != 1
+                    )
+                )
+                session_result = await db.execute(session_count_stmt)
+                result["sessions"] = session_result.scalar() or 0
+            except Exception:
+                pass
+
+            # 3. Gym membership purchases (from Order/OrderItem with metadata)
+            try:
+                gym_membership_start = datetime.combine(start_date, datetime.min.time())
+                gym_membership_end = datetime.combine(end_date, datetime.min.time()).replace(hour=23, minute=59, second=59)
+
+                order_ids_subquery = (
+                    select(Order.id)
+                    .join(Payment, Payment.order_id == Order.id)
+                    .where(
+                        and_(
+                            Payment.status == "captured",
+                            Order.status == "paid",
+                            Payment.captured_at >= gym_membership_start,
+                            Payment.captured_at <= gym_membership_end
+                        )
+                    )
+                )
+
+                orders_result = await db.execute(order_ids_subquery)
+                order_ids = [row[0] for row in orders_result.all()]
+
+                if order_ids:
+                    order_items_stmt = select(OrderItem).where(
+                        and_(
+                            OrderItem.order_id.in_(order_ids),
+                            OrderItem.gym_id.isnot(None),
+                            OrderItem.gym_id != "1"
+                        )
+                    )
+                    order_items_result = await db.execute(order_items_stmt)
+                    order_items = order_items_result.scalars().all()
+
+                    for item in order_items:
+                        if item.order_id:
+                            order_stmt = select(Order).where(Order.id == item.order_id)
+                            order_result = await db.execute(order_stmt)
+                            order = order_result.scalar_one_or_none()
+
+                            if order and order.order_metadata and isinstance(order.order_metadata, dict):
+                                metadata = order.order_metadata
+                                condition1 = False
+                                if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
+                                    if metadata["audit"].get("source") == "dailypass_checkout_api":
+                                        condition1 = True
+
+                                condition2 = False
+                                if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                                    if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
+                                        condition2 = True
+
+                                condition3 = False
+                                if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                                    if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                                        condition3 = True
+
+                                if condition1 or condition2 or condition3:
+                                    result["gym_membership"] += 1
+            except Exception:
+                pass
+
+            # 4. Fittbot subscription purchases
+            try:
+                subscription_start = datetime.combine(start_date, datetime.min.time())
+                subscription_end = datetime.combine(end_date, datetime.min.time()).replace(hour=23, minute=59, second=59)
+
+                # First condition: Orders with sub_
+                order_id_subquery = (
+                    select(Order.id)
+                    .where(
+                        and_(
+                            Order.provider_order_id.like("sub_%"),
+                            Order.status == "paid"
+                        )
+                    )
+                )
+
+                payment_from_order_stmt = select(func.count()).where(
+                    and_(
+                        Payment.order_id.in_(order_id_subquery),
+                        Payment.captured_at >= subscription_start,
+                        Payment.captured_at <= subscription_end
+                    )
+                )
+                result1 = await db.execute(payment_from_order_stmt)
+                sub_count = result1.scalar() or 0
+
+                # Second condition: Google Play payments
+                payment_direct_stmt = select(func.count()).where(
+                    and_(
+                        Payment.provider == "google_play",
+                        Payment.status == "captured",
+                        Payment.captured_at >= subscription_start,
+                        Payment.captured_at <= subscription_end
+                    )
+                )
+                result2 = await db.execute(payment_direct_stmt)
+                google_count = result2.scalar() or 0
+
+                result["fittbot_subscription"] = sub_count + google_count
+            except Exception:
+                pass
+
+            return result
+
+        # Helper to calculate average from list of source-wise data
+        def calculate_source_averages(data_list):
+            """Calculate average for each source across data points."""
+            if not data_list:
+                return {"daily_pass": 0, "sessions": 0, "gym_membership": 0, "fittbot_subscription": 0}
+
+            num_points = len(data_list)
+            return {
+                "daily_pass": round(sum(d["daily_pass"] for d in data_list) / num_points, 2),
+                "sessions": round(sum(d["sessions"] for d in data_list) / num_points, 2),
+                "gym_membership": round(sum(d["gym_membership"] for d in data_list) / num_points, 2),
+                "fittbot_subscription": round(sum(d["fittbot_subscription"] for d in data_list) / num_points, 2)
+            }
+
+        # Calculate Daily Average (last 3 days) with source breakdown
+        daily_source_data = []
+        for i in range(3):
+            day_date = today - timedelta(days=i)
+            day_data = await get_purchases_by_source(day_date, day_date)
+            daily_source_data.append(day_data)
+        daily_average = calculate_source_averages(daily_source_data)
+
+        # Calculate Weekly Average (last 3 FULL weeks) with source breakdown
+        weekly_source_data = []
+        for i in range(3):
+            # Last 3 FULL weeks - exclude current incomplete week
+            # Week 1: 7-13 days ago (full week)
+            # Week 2: 14-20 days ago (full week)
+            # Week 3: 21-27 days ago (full week)
+            week_end = today - timedelta(days=(i * 7) + 1)  # Start from yesterday to ensure full week
+            week_start = week_end - timedelta(days=6)
+            week_data = await get_purchases_by_source(week_start, week_end)
+            weekly_source_data.append(week_data)
+        weekly_average = calculate_source_averages(weekly_source_data)
+
+        # Calculate Monthly Average (last 3 FULL months) with source breakdown
+        monthly_source_data = []
+        for i in range(3):
+            # Last 3 FULL months - exclude current incomplete month
+            # Month 1: Previous full month
+            # Month 2: 2 months ago (full month)
+            # Month 3: 3 months ago (full month)
+            month_date = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+            for _ in range(i):
+                month_date = (month_date - timedelta(days=1)).replace(day=1)
+            month_start = month_date
+            # Get last day of the month
+            next_month = month_date.replace(day=28) + timedelta(days=4)
+            month_end = next_month - timedelta(days=next_month.day)
+
+            month_data = await get_purchases_by_source(month_start, month_end)
+            monthly_source_data.append(month_data)
+        monthly_average = calculate_source_averages(monthly_source_data)
+
+        # Calculate totals for display
+        daily_total = round(sum(daily_average.values()), 2)
+        weekly_total = round(sum(weekly_average.values()), 2)
+        monthly_total = round(sum(monthly_average.values()), 2)
+
+        return {
+            "success": True,
+            "data": {
+                "dailyAverage": daily_total,
+                "weeklyAverage": weekly_total,
+                "monthlyAverage": monthly_total,
+                "dailyBreakdown": daily_average,
+                "weeklyBreakdown": weekly_average,
+                "monthlyBreakdown": monthly_average
+            },
+            "message": "Booking averages fetched successfully"
+        }
+
+    except Exception as e:
+        import logging
+        logging.error(f"Error in booking-averages: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
