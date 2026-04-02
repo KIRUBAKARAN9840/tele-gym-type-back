@@ -8,7 +8,6 @@ from typing import Optional
 import calendar
 
 from app.models.async_database import get_async_db
-from app.fittbot_api.v1.payments.models.orders import Order
 from app.models.adminmodels import Expenses, OpeningBalance
 
 # Import centralized revenue service
@@ -22,7 +21,6 @@ from app.fittbot_admin_api.revenue_service import (
 class OpeningBalanceCreate(BaseModel):
     financial_year: str  # Format: '2020-2021'
     amount: float
-
 
 router = APIRouter(prefix="/api/admin/cash-flow", tags=["AdminCashFlow"])
 
@@ -89,29 +87,43 @@ async def get_last_month_outflow(
           retained revenue for the platform.
     """
     try:
-        today = date.today()
-
-        # Determine target month
+        # Determine the month to calculate
         if month:
-            year, month_num = map(int, month.split("-"))
-            target_month_start = date(year, month_num, 1)
-            last_day = calendar.monthrange(year, month_num)[1]
-            target_month_end = date(year, month_num, last_day)
-        else:
-            # Use previous calendar month
-            if today.month == 1:
-                target_month_start = date(today.year - 1, 12, 1)
-                target_month_end = date(today.year - 1, 12, 31)
-            else:
-                target_month_start = date(today.year, today.month - 1, 1)
-                last_day = calendar.monthrange(today.year, today.month - 1)[1]
-                target_month_end = date(today.year, today.month - 1, last_day)
+            # Parse the month parameter (YYYY-MM)
+            parts = month.split("-")
+            if len(parts) != 2:
+                raise HTTPException(status_code=400, detail="Invalid month format. Expected: YYYY-MM")
 
-        # Use centralized revenue service
+            prev_year = int(parts[0])
+            prev_month = int(parts[1])
+
+            if prev_month < 1 or prev_month > 12:
+                raise HTTPException(status_code=400, detail="Invalid month")
+        else:
+            # Calculate previous calendar month dates
+            today = datetime.now().date()
+            if today.month == 1:
+                # January -> December of previous year
+                prev_month = 12
+                prev_year = today.year - 1
+            else:
+                prev_month = today.month - 1
+                prev_year = today.year
+
+        # First day of the month
+        start_date = date(prev_year, prev_month, 1)
+
+        # Last day of the month using calendar
+        last_day_of_month = calendar.monthrange(prev_year, prev_month)[1]
+        end_date = date(prev_year, prev_month, last_day_of_month)
+
+        print(f"[CASH_FLOW] Calculating outflow for {start_date} to {end_date}")
+
+        # Use centralized revenue service instead of get_revenue_for_month
         revenue_data = await get_revenue_breakdown(
             db=db,
-            start_date=target_month_start,
-            end_date=target_month_end,
+            start_date=start_date,
+            end_date=end_date,
             exclude_gym_id_one=False  # Include all gyms for cash flow
         )
 
@@ -121,23 +133,35 @@ async def get_last_month_outflow(
         gym_membership_revenue = revenue_data.gym_membership
         fittbot_subscription_revenue = revenue_data.fittbot_subscription
 
-        # Calculate payouts and deductions for each category
+        # Calculate payouts and deductions for each category (using financials logic)
+        # Membership: 15% commission, 2% PG, 2% TDS
         membership_payout, membership_comm, membership_pg, membership_tds = calculate_membership_payout(
             gym_membership_revenue
         )
+
+        # Daily Pass: 30% commission, 2% PG, 2% TDS
         daily_pass_payout, daily_pass_comm, daily_pass_pg, daily_pass_tds = calculate_daily_pass_session_payout(
             daily_pass_revenue
         )
+
+        # Sessions: 30% commission, 2% PG, 2% TDS
         sessions_payout, sessions_comm, sessions_pg, sessions_tds = calculate_daily_pass_session_payout(
             sessions_revenue
         )
 
         # Calculate totals
+        # 1. Total Gym Payout (actual outflow to gyms)
         total_gym_payout = membership_payout + daily_pass_payout + sessions_payout
+
+        # 2. Total PG Charges (payment gateway fees - kept by platform, not paid out)
         total_pg_charges = membership_pg + daily_pass_pg + sessions_pg
 
-        # GST Payable
+        # 3. Total GST Payable (in paise for consistency)
+        # GST on subscription (18% of total subscription revenue)
+        # Note: fittbot_subscription_revenue is already in paise from DB
         gst_on_subscription_paise = int(Decimal(str(fittbot_subscription_revenue)) * Decimal("0.18"))
+        # GST on commissions (18% of commission)
+        # Note: commissions are already in paise (int returned from calculate functions)
         gst_on_commission_paise = (
             int(Decimal(str(membership_comm)) * Decimal("0.18")) +
             int(Decimal(str(daily_pass_comm)) * Decimal("0.18")) +
@@ -145,28 +169,51 @@ async def get_last_month_outflow(
         )
         total_gst_payable_paise = gst_on_subscription_paise + gst_on_commission_paise
 
-        # TDS Payable
+        # 4. Total TDS Payable (tax deducted that needs to be paid to government)
         total_tds_payable_paise = membership_tds + daily_pass_tds + sessions_tds
 
-        # Expenses
+        # 5. Total Expenses (from fittbot_admins.expenses table)
+        # Note: Expenses are already in rupees (Float), need to convert to paise
         total_expenses_rupees = 0.0
         try:
             expenses_stmt = (
                 select(func.coalesce(func.sum(Expenses.amount), 0))
-                .where(Expenses.expense_date >= target_month_start)
-                .where(Expenses.expense_date <= target_month_end)
+                .where(Expenses.expense_date >= start_date)
+                .where(Expenses.expense_date <= end_date)
             )
             expenses_result = await db.execute(expenses_stmt)
-            total_expenses_rupees = expenses_result.scalar() or 0
+            total_expenses_rupees = expenses_result.scalar() or 0.0
         except Exception as e:
             print(f"[CASH_FLOW] Error fetching Expenses: {e}")
 
+        # Convert expenses to paise for consistency
         total_expenses_paise = int(total_expenses_rupees * 100)
 
-        # Calculate outflow (in paise)
+        # 6. Get Opening Balances
+        opening_balances_data = []
+        try:
+            ob_stmt = select(OpeningBalance).order_by(OpeningBalance.financial_year.desc())
+            ob_result = await db.execute(ob_stmt)
+            opening_balances = ob_result.scalars().all()
+
+            opening_balances_data = [
+                {
+                    "id": ob.id,
+                    "financial_year": ob.financial_year,
+                    "amount": ob.amount
+                }
+                for ob in opening_balances
+            ]
+        except Exception as e:
+            print(f"[CASH_FLOW] Error fetching Opening Balances: {e}")
+
+        # Calculate total outflow (actual cash leaving the business) - all in paise
+        # Outflow = Gym Payout + GST Payable + TDS Payable + Expenses
+        # Note: PG charges are deducted before payout, not a separate outflow
+        # Commission is retained revenue, not an outflow
         total_outflow_paise = total_gym_payout + total_gst_payable_paise + total_tds_payable_paise + total_expenses_paise
 
-        # Calculate inflow (total gross revenue) - all in paise
+        # Calculate total inflow (total gross revenue) - all in paise
         total_inflow_paise = daily_pass_revenue + sessions_revenue + gym_membership_revenue + fittbot_subscription_revenue
 
         # Calculate net cash flow
@@ -175,22 +222,26 @@ async def get_last_month_outflow(
         return {
             "success": True,
             "data": {
-                "totalInflow": round(total_inflow_paise / 100, 2),
-                "totalOutflow": round(total_outflow_paise / 100, 2),
-                "netCashFlow": round(net_cash_flow_paise / 100, 2),
-                "inflowBreakdown": {
-                    "daily_pass": round(daily_pass_revenue / 100, 2),
-                    "sessions": round(sessions_revenue / 100, 2),
-                    "gym_membership": round(gym_membership_revenue / 100, 2),
-                    "fittbot_subscription": round(fittbot_subscription_revenue / 100, 2)
+                "month": {
+                    "year": prev_year,
+                    "month": prev_month,
+                    "month_name": end_date.strftime("%B %Y"),
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat()
                 },
-                "outflowBreakdown": {
+                "inflow": {
+                    "total_revenue": round(total_inflow_paise / 100, 2)
+                },
+                "outflow": {
                     "gym_payout": round(total_gym_payout / 100, 2),
                     "gst_payable": round(total_gst_payable_paise / 100, 2),
                     "tds_payable": round(total_tds_payable_paise / 100, 2),
-                    "expenses": round(total_expenses_paise / 100, 2)
+                    "expenses": round(total_expenses_paise / 100, 2),
+                    "total_outflow": round(total_outflow_paise / 100, 2)
                 },
-                "gymPayoutBreakdown": {
+                "net_cash_flow": round(net_cash_flow_paise / 100, 2),
+                "opening_balances": opening_balances_data,
+                "breakdown": {
                     "membership": {
                         "revenue": round(gym_membership_revenue / 100, 2),
                         "payout": round(membership_payout / 100, 2),
@@ -216,8 +267,7 @@ async def get_last_month_outflow(
                         "revenue": round(fittbot_subscription_revenue / 100, 2),
                         "gst_on_revenue": round(gst_on_subscription_paise / 100, 2)
                     }
-                },
-                "month": target_month_start.strftime("%B %Y")
+                }
             }
         }
 
@@ -228,60 +278,209 @@ async def get_last_month_outflow(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/monthly-trends")
-async def get_monthly_cash_flow_trends(
-    start_month: str = Query(None, description="Start month in YYYY-MM format"),
-    end_month: str = Query(None, description="End month in YYYY-MM format"),
+# ==================== Opening Balance Endpoints ====================
+
+@router.post("/opening-balance")
+async def create_or_update_opening_balance(
+    payload: OpeningBalanceCreate,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Get monthly cash flow trends for a range of months.
+    Create or update opening balance for a financial year.
+    """
+    try:
+        # Validate financial year format (YYYY-YYYY)
+        if not validate_financial_year(payload.financial_year):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid financial year format. Expected format: '2020-2021'"
+            )
 
-    If no range provided, returns last 6 months of data.
-    Includes opening balance tracking for the financial year.
+        # Check if record exists
+        existing_stmt = select(OpeningBalance).where(OpeningBalance.financial_year == payload.financial_year)
+        existing_result = await db.execute(existing_stmt)
+        existing_record = existing_result.scalar_one_or_none()
+
+        if existing_record:
+            # Update existing record
+            existing_record.amount = payload.amount
+            existing_record.updated_at = datetime.now()
+            await db.commit()
+
+            return {
+                "success": True,
+                "message": f"Opening balance for {payload.financial_year} updated successfully",
+                "data": {
+                    "id": existing_record.id,
+                    "financial_year": existing_record.financial_year,
+                    "amount": existing_record.amount
+                }
+            }
+        else:
+            # Create new record
+            new_record = OpeningBalance(
+                financial_year=payload.financial_year,
+                amount=payload.amount
+            )
+            db.add(new_record)
+            await db.commit()
+
+            return {
+                "success": True,
+                "message": f"Opening balance for {payload.financial_year} created successfully",
+                "data": {
+                    "id": new_record.id,
+                    "financial_year": new_record.financial_year,
+                    "amount": new_record.amount
+                }
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        print(f"[CASH_FLOW] Error saving opening balance: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/opening-balance/{financial_year}")
+async def delete_opening_balance(
+    financial_year: str,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Delete opening balance for a financial year.
+    """
+    try:
+        stmt = select(OpeningBalance).where(OpeningBalance.financial_year == financial_year)
+        result = await db.execute(stmt)
+        opening_balance = result.scalar_one_or_none()
+
+        if not opening_balance:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Opening balance for {financial_year} not found"
+            )
+
+        await db.delete(opening_balance)
+        await db.commit()
+
+        return {
+            "success": True,
+            "message": f"Opening balance for {financial_year} deleted successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        print(f"[CASH_FLOW] Error deleting opening balance: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def validate_financial_year(financial_year: str) -> bool:
+    """
+    Validate financial year format (YYYY-YYYY).
+    Example: '2020-2021', '2021-2022'
+    """
+    if not financial_year or len(financial_year) != 9:
+        return False
+
+    parts = financial_year.split("-")
+    if len(parts) != 2:
+        return False
+
+    try:
+        year1 = int(parts[0])
+        year2 = int(parts[1])
+
+        # Second year should be year1 + 1
+        return year2 == year1 + 1
+    except ValueError:
+        return False
+
+
+@router.get("/monthly-data")
+async def get_monthly_cash_flow_data(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(12, ge=1, le=100),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Get paginated monthly cash flow data table.
+    Returns data for multiple months including:
+    - Opening Balance
+    - Outflow (Gym Payout + GST + TDS + Expenses)
+    - Net Cash Flow (Inflow - Outflow)
+    - Closing Balance
+    - Burn Rate
+    - Runway
     """
     try:
         today = date.today()
+        offset = (page - 1) * page_size
 
-        # Determine month range
-        if start_month and end_month:
-            start_year, start_month_num = map(int, start_month.split("-"))
-            end_year, end_month_num = map(int, end_month.split("-"))
-            current_start = date(start_year, start_month_num, 1)
-            current_end = date(end_year, end_month_num, calendar.monthrange(end_year, end_month_num)[1])
+        # Fetch opening balances
+        ob_stmt = select(OpeningBalance).order_by(OpeningBalance.financial_year.desc())
+        ob_result = await db.execute(ob_stmt)
+        opening_balances = ob_result.scalars().all()
+
+        # Create opening balance lookup by financial year
+        opening_balance_dict = {ob.financial_year: ob.amount for ob in opening_balances}
+
+        # Get current financial year
+        current_month = today.month
+        current_year = today.year
+        if current_month >= 4:
+            current_fy = f"{current_year}-{current_year + 1}"
         else:
-            # Default: last 6 months
-            current_end = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
-            if today.month - 6 <= 0:
-                current_start = date(today.year - 1, today.month - 6 + 12, 1)
-            else:
-                current_start = date(today.year, today.month - 6, 1)
+            current_fy = f"{current_year - 1}-{current_year}"
 
-        # Generate all months in range
+        # Get opening balance for current financial year
+        current_fy_opening_balance = opening_balance_dict.get(current_fy, 0)
+
+        # Calculate cumulative cash flow from April 1 to current date
+        fy_start_month = 4  # April
+        fy_start_year = current_year if current_month >= 4 else current_year - 1
+
         monthly_data = []
-        current_date = current_start
 
-        while current_date <= current_end:
-            year = current_date.year
-            month = current_date.month
-            last_day = calendar.monthrange(year, month)[1]
+        # Generate only the months needed for the current page
+        for i in range(page_size):
+            month_index = offset + i
+
+            # Calculate the month and year
+            month = today.month - month_index
+            year = today.year
+            while month <= 0:
+                month += 12
+                year -= 1
+
+            # Format month string (YYYY-MM)
+            month_str = f"{year}-{month:02d}"
+
+            # Get month start and end dates
             month_start = date(year, month, 1)
-            month_end = date(year, month, last_day)
+            last_day_of_month = calendar.monthrange(year, month)[1]
+            month_end = date(year, month, last_day_of_month)
 
-            # Get revenue data using centralized service
+            # Use centralized revenue service instead of get_revenue_for_month
             revenue_data = await get_revenue_breakdown(
                 db=db,
                 start_date=month_start,
                 end_date=month_end,
-                exclude_gym_id_one=False
+                exclude_gym_id_one=False  # Include all gyms for cash flow
             )
 
+            # Extract revenues (all in PAISA)
             daily_pass_revenue = revenue_data.daily_pass
             sessions_revenue = revenue_data.sessions
             gym_membership_revenue = revenue_data.gym_membership
             fittbot_subscription_revenue = revenue_data.fittbot_subscription
 
-            # Calculate payouts
+            # Calculate payouts and deductions
             membership_payout, membership_comm, membership_pg, membership_tds = calculate_membership_payout(
                 gym_membership_revenue
             )
@@ -317,7 +516,7 @@ async def get_monthly_cash_flow_trends(
                     .where(Expenses.expense_date <= month_end)
                 )
                 expenses_result = await db.execute(expenses_stmt)
-                total_expenses_rupees = expenses_result.scalar() or 0
+                total_expenses_rupees = expenses_result.scalar() or 0.0
             except Exception as e:
                 print(f"[CASH_FLOW] Error fetching Expenses: {e}")
 
@@ -328,131 +527,79 @@ async def get_monthly_cash_flow_trends(
             total_outflow_paise = total_gym_payout + total_gst_payable_paise + total_tds_payable_paise + total_expenses_paise
             net_cash_flow_paise = total_inflow_paise - total_outflow_paise
 
+            # Calculate opening balance for this month
+            # If month is April (4) or later, it belongs to current FY
+            # If month is before April, it belongs to previous FY
+            if month >= 4:
+                month_fy = f"{year}-{year + 1}"
+            else:
+                month_fy = f"{year - 1}-{year}"
+
+            month_opening_balance = opening_balance_dict.get(month_fy, 0)
+
+            # Calculate closing balance (Opening Balance + Net Cash Flow)
+            # Convert opening balance from rupees to paise for calculation
+            closing_balance_paise = int(month_opening_balance * 100) + net_cash_flow_paise
+
+            # Calculate burn rate (absolute value of negative cash flow)
+            burn_rate_paise = abs(net_cash_flow_paise) if net_cash_flow_paise < 0 else 0
+
+            # Calculate runway
+            # Only if closing_balance > 0 AND net_cash_flow < 0
+            closing_balance_rupees = closing_balance_paise / 100
+            burn_rate_rupees = burn_rate_paise / 100
+
+            if closing_balance_paise > 0 and net_cash_flow_paise < 0:
+                runway = closing_balance_rupees / burn_rate_rupees
+            else:
+                runway = 0
+
+            month_name = month_start.strftime("%B %Y")
+
             monthly_data.append({
-                "month": month_start.strftime("%B %Y"),
-                "month_key": f"{year}-{month:02d}",
-                "totalInflow": round(total_inflow_paise / 100, 2),
-                "totalOutflow": round(total_outflow_paise / 100, 2),
-                "netCashFlow": round(net_cash_flow_paise / 100, 2)
+                "month": month_str,
+                "month_display": month_name,
+                "financial_year": month_fy,
+                "opening_balance": round(month_opening_balance, 2),
+                "inflow": round(total_inflow_paise / 100, 2),
+                "outflow": round(total_outflow_paise / 100, 2),
+                "net_cash_flow": round(net_cash_flow_paise / 100, 2),
+                "closing_balance": round(closing_balance_rupees, 2),
+                "burn_rate": round(burn_rate_rupees, 2),
+                "runway": round(runway, 1)
             })
 
-            # Move to next month
-            if month == 12:
-                current_date = date(year + 1, 1, 1)
-            else:
-                current_date = date(year, month + 1, 1)
+        # Calculate total months
+        start_year = 2020
+        start_month = 1
+        total_months = (today.year - start_year) * 12 + today.month - start_month + 1
+        total_pages = (total_months + page_size - 1) // page_size
 
-        return {
-            "success": True,
-            "data": monthly_data
-        }
-
-    except Exception as e:
-        print(f"[CASH_FLOW] Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/opening-balance")
-async def get_opening_balance(
-    financial_year: Optional[str] = Query(None, description="Financial year in format YYYY-YYYY (e.g., 2024-2025)"),
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Get opening balance for a financial year.
-
-    Financial year runs from April 1st to March 31st.
-    Opening balance is the closing balance of March 31st of the previous year.
-    """
-    try:
-        today = date.today()
-
-        # Determine financial year
-        if financial_year:
-            start_year, end_year = map(int, financial_year.split("-"))
-        else:
-            # Current financial year
-            if today.month >= 4:
-                start_year = today.year
-                end_year = today.year + 1
-            else:
-                start_year = today.year - 1
-                end_year = today.year
-
-        # Try to get stored opening balance
-        balance_stmt = (
-            select(OpeningBalance)
-            .where(OpeningBalance.financial_year == f"{start_year}-{end_year}")
-        )
-        balance_result = await db.execute(balance_stmt)
-        balance_record = balance_result.scalar_one_or_none()
-
-        if balance_record:
-            return {
-                "success": True,
-                "data": {
-                    "financial_year": f"{start_year}-{end_year}",
-                    "opening_balance": balance_record.amount,
-                    "is_stored": True
-                }
+        # Prepare opening balances data
+        opening_balances_data = [
+            {
+                "id": ob.id,
+                "financial_year": ob.financial_year,
+                "amount": ob.amount
             }
+            for ob in opening_balances
+        ]
 
-        # If no stored balance, return zero
         return {
             "success": True,
-            "data": {
-                "financial_year": f"{start_year}-{end_year}",
-                "opening_balance": 0.0,
-                "is_stored": False
+            "data": monthly_data,
+            "opening_balances": opening_balances_data,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_records": total_months,
+                "total_pages": total_pages,
+                "has_next_page": page < total_pages,
+                "has_prev_page": page > 1
             }
         }
 
     except Exception as e:
-        print(f"[CASH_FLOW] Error: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/opening-balance")
-async def set_opening_balance(
-    payload: OpeningBalanceCreate,
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Set or update opening balance for a financial year.
-    """
-    try:
-        # Check if record exists
-        existing_stmt = (
-            select(OpeningBalance)
-            .where(OpeningBalance.financial_year == payload.financial_year)
-        )
-        existing_result = await db.execute(existing_stmt)
-        existing_record = existing_result.scalar_one_or_none()
-
-        if existing_record:
-            # Update existing
-            existing_record.amount = payload.amount
-            existing_record.updated_at = datetime.now()
-        else:
-            # Create new
-            new_record = OpeningBalance(
-                financial_year=payload.financial_year,
-                amount=payload.amount
-            )
-            db.add(new_record)
-
-        await db.commit()
-
-        return {
-            "success": True,
-            "message": f"Opening balance for {payload.financial_year} updated successfully"
-        }
-
-    except Exception as e:
-        await db.rollback()
         print(f"[CASH_FLOW] Error: {str(e)}")
         import traceback
         traceback.print_exc()
