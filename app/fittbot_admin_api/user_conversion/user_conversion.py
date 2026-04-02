@@ -7,6 +7,8 @@ from app.models.telecaller_models import Telecaller, UserConversion, ClientCallF
 from app.models.fittbot_models import Client, Gym, GymOwner, SessionPurchase, FittbotGymMembership
 from app.models.dailypass_models import DailyPass, get_dailypass_session
 from app.fittbot_api.v1.payments.models.subscriptions import Subscription
+from app.fittbot_api.v1.payments.models.payments import Payment
+from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
 from app.fittbot_admin_api.users.usersDashboard import get_plan_name_from_product_id
 from datetime import datetime, timezone, timedelta
 
@@ -82,6 +84,73 @@ async def get_latest_purchase_type(user_id: str, db: AsyncSession) -> Optional[s
     except Exception as e:
         print(f"[LATEST_PURCHASE_TYPE] Error for user {user_id}: {e}")
         return None
+
+
+async def get_telecaller_total_revenue(telecaller_id: int, db: AsyncSession) -> float:
+    """
+    Calculate total revenue from all converted clients of a telecaller.
+
+    Logic:
+    1. Get all unique client_ids converted by this telecaller
+    2. Join payments -> order_items
+    3. Filter gym_id != '1'
+    4. Sum amount_minor from payments
+    5. Convert to rupees by dividing by 100
+    """
+    try:
+        # Get unique converted client_ids from both UserConversion and ClientCallFeedback
+        uc_clients = select(
+            UserConversion.client_id
+        ).where(UserConversion.telecaller_id == telecaller_id)
+
+        ccf_clients = select(
+            ClientCallFeedback.client_id
+        ).where(
+            ClientCallFeedback.executive_id == telecaller_id,
+            ClientCallFeedback.status == 'converted'
+        )
+
+        combined = union_all(uc_clients, ccf_clients).subquery()
+
+        # Get distinct client_ids
+        distinct_clients = select(
+            combined.c.client_id
+        ).distinct().subquery()
+
+        # Calculate total revenue: payments -> order_items with gym_id != '1'
+        # Join: Payment -> Order -> OrderItem
+        # Filter: gym_id != '1'
+        # Sum: amount_minor from Payment
+
+        revenue_stmt = select(
+            func.coalesce(func.sum(Payment.amount_minor), 0)
+        ).join(
+            Order, Order.id == Payment.order_id
+        ).join(
+            OrderItem, OrderItem.order_id == Order.id
+        ).join(
+            distinct_clients, distinct_clients.c.client_id == Payment.customer_id
+        ).where(
+            or_(
+                OrderItem.gym_id != '1',
+                OrderItem.gym_id.is_(None)
+            )
+        )
+
+        result = await db.execute(revenue_stmt)
+        total_amount_minor = result.scalar() or 0
+
+        # Convert from minor to major (paise to rupees)
+        # Convert to float first, then divide by 100
+        total_revenue = float(total_amount_minor) / 100
+
+        return total_revenue
+
+    except Exception as e:
+        print(f"[TELECALLER_REVENUE] Error calculating revenue for telecaller {telecaller_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return 0.0
 
 
 async def get_user_last_purchases_async(user_id: str, db: AsyncSession):
@@ -427,6 +496,9 @@ async def get_telecaller_converted_clients(
                 "latest_purchase_type": latest_purchase_type
             })
 
+        # Calculate total revenue from converted clients
+        total_revenue = await get_telecaller_total_revenue(telecaller_id, db)
+
         total_pages = (total_count + limit - 1) // limit
 
         return {
@@ -439,6 +511,7 @@ async def get_telecaller_converted_clients(
                 },
                 "clients": client_list,
                 "total": total_count,
+                "total_revenue": round(total_revenue, 2),
                 "page": page,
                 "limit": limit,
                 "totalPages": total_pages,
