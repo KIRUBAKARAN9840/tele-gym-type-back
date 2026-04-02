@@ -176,7 +176,7 @@ async def get_users(
     plan: Optional[str] = Query(None, description="Filter by plan name (Gold/Platinum/Diamond)"),
     gym: Optional[str] = Query(None, description="Filter by gym name"),
     sort_order: str = Query("desc", description="Sort order for created_at"),
-    date_filter: Optional[str] = Query(None, description="Date filter: all, today, week, month, custom"),
+    date_filter: Optional[str] = Query(None, description="Date filter: all, today, yesterday, week, month, custom"),
     custom_start_date: Optional[str] = Query(None, description="Custom start date (YYYY-MM-DD)"),
     custom_end_date: Optional[str] = Query(None, description="Custom end date (YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_async_db)
@@ -260,6 +260,10 @@ async def get_users(
             if date_filter == "today":
                 start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
                 end_date = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+            elif date_filter == "yesterday":
+                yesterday = now - timedelta(days=1)
+                start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
             elif date_filter == "week":
                 start_date = now - timedelta(days=7)
                 start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -1382,7 +1386,7 @@ async def get_users_overview(
     plan: Optional[str] = Query(None, description="Filter by plan name (Gold/Platinum/Diamond)"),
     gym: Optional[str] = Query(None, description="Filter by gym name"),
     sort_order: str = Query("desc", description="Sort order for created_at"),
-    date_filter: Optional[str] = Query(None, description="Date filter: all, today, week, month, custom"),
+    date_filter: Optional[str] = Query(None, description="Date filter: all, today, yesterday, week, month, custom"),
     custom_start_date: Optional[str] = Query(None, description="Custom start date (YYYY-MM-DD)"),
     custom_end_date: Optional[str] = Query(None, description="Custom end date (YYYY-MM-DD)"),
     platform: Optional[str] = Query(None, description="Filter by platform (android/ios)"),
@@ -1723,6 +1727,10 @@ async def get_users_overview(
             if date_filter == "today":
                 start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
                 end_date = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+            elif date_filter == "yesterday":
+                yesterday = now - timedelta(days=1)
+                start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
             elif date_filter == "week":
                 start_date = now - timedelta(days=7)
                 start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
