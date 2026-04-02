@@ -271,9 +271,9 @@ async def get_gym_stats(
             except (ValueError, TypeError):
                 pass  # Invalid filter, ignore it
 
-        # Apply city filter
+        # Apply city filter (case-insensitive to handle normalized city names from frontend)
         if city:
-            base_stmt = base_stmt.where(Gym.city == city)
+            base_stmt = base_stmt.where(func.lower(Gym.city) == city.lower())
 
         # Apply sorting
         if sort_order == "asc":
