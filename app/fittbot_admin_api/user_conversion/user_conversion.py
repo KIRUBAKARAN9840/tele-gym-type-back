@@ -291,7 +291,7 @@ async def get_user_last_purchases_async(user_id: str, db: AsyncSession):
 async def get_telecallers_with_conversion_count(
     db: AsyncSession = Depends(get_async_db)
 ):
-   
+
     try:
         # Get all telecallers
         telecaller_stmt = select(
@@ -306,49 +306,109 @@ async def get_telecallers_with_conversion_count(
         telecaller_result = await db.execute(telecaller_stmt)
         telecallers = telecaller_result.all()
 
-        telecaller_list = []
-        for telecaller in telecallers:
-            # Count distinct converted client_ids from both UserConversion and ClientCallFeedback
-            # Use ROW_NUMBER to get only the latest entry per client
-            uc_clients = select(
-                UserConversion.id.label('conversion_id'),
-                cast(UserConversion.client_id, String).label('client_id'),
-                UserConversion.converted_at,
-                literal('user_conversion').label('source')
-            ).where(UserConversion.telecaller_id == telecaller.id)
+        # Create a dict to store telecaller data
+        telecaller_dict = {t.id: {
+            "id": t.id,
+            "name": t.name,
+            "mobile_number": t.mobile_number,
+            "total_converted": 0,
+            "total_revenue": 0.0
+        } for t in telecallers}
 
-            ccf_clients = select(
-                ClientCallFeedback.id.label('conversion_id'),
-                cast(ClientCallFeedback.client_id, String).label('client_id'),
-                ClientCallFeedback.created_at.label('converted_at'),
-                literal('call_feedback').label('source')
+        # ========== EFFICIENT CONVERSION COUNT (Single Query) ==========
+        # Get all converted clients with their telecallers in one query
+        # From UserConversion
+        uc_all = select(
+            UserConversion.telecaller_id,
+            UserConversion.client_id,
+            UserConversion.converted_at,
+            literal('user_conversion').label('source')
+        ).where(UserConversion.telecaller_id.in_(list(telecaller_dict.keys())))
+
+        # From ClientCallFeedback
+        ccf_all = select(
+            ClientCallFeedback.executive_id.label('telecaller_id'),
+            ClientCallFeedback.client_id,
+            ClientCallFeedback.created_at.label('converted_at'),
+            literal('call_feedback').label('source')
+        ).where(
+            ClientCallFeedback.executive_id.in_(list(telecaller_dict.keys())),
+            ClientCallFeedback.status == 'converted'
+        )
+
+        combined_all = union_all(uc_all, ccf_all).subquery()
+
+        # Rank by converted_at for each client to get only the latest
+        ranked_all = select(
+            combined_all.c.telecaller_id,
+            combined_all.c.client_id,
+            func.row_number().over(
+                partition_by=combined_all.c.client_id,
+                order_by=desc(combined_all.c.converted_at)
+            ).label('rn')
+        ).subquery()
+
+        # Count latest conversions per telecaller
+        conversion_counts = select(
+            ranked_all.c.telecaller_id,
+            func.count().label('count')
+        ).where(ranked_all.c.rn == 1).group_by(ranked_all.c.telecaller_id)
+
+        conv_result = await db.execute(conversion_counts)
+        for row in conv_result.all():
+            if row.telecaller_id in telecaller_dict:
+                telecaller_dict[row.telecaller_id]["total_converted"] = row.count
+
+        # ========== EFFICIENT REVENUE CALCULATION (Same logic as individual page) ==========
+        # Use the EXACT same logic as get_telecaller_total_revenue function
+        # Get distinct client_ids for all telecallers, then join with payments
+
+        # Create combined clients with telecaller_id mapping
+        combined_for_revenue = union_all(
+            select(
+                UserConversion.telecaller_id,
+                UserConversion.client_id
+            ).where(UserConversion.telecaller_id.in_(telecaller_dict.keys())),
+            select(
+                ClientCallFeedback.executive_id.label('telecaller_id'),
+                ClientCallFeedback.client_id
             ).where(
-                ClientCallFeedback.executive_id == telecaller.id,
+                ClientCallFeedback.executive_id.in_(list(telecaller_dict.keys())),
                 ClientCallFeedback.status == 'converted'
             )
+        ).subquery()
 
-            combined = union_all(uc_clients, ccf_clients).subquery()
+        # Get distinct (telecaller_id, client_id) pairs - this handles duplicates
+        distinct_client_telecaller = select(
+            combined_for_revenue.c.telecaller_id,
+            combined_for_revenue.c.client_id
+        ).distinct().subquery()
 
-            # Use window function to rank by converted_at for each client
-            ranked = select(
-                combined.c.client_id,
-                func.row_number().over(
-                    partition_by=combined.c.client_id,
-                    order_by=desc(combined.c.converted_at)
-                ).label('rn')
-            ).subquery()
+        # Calculate revenue by joining with payments and order_items
+        # Join: distinct_client_telecaller -> Payment -> Order -> OrderItem
+        revenue_query = select(
+            distinct_client_telecaller.c.telecaller_id,
+            func.coalesce(func.sum(Payment.amount_minor), 0).label('amount_minor')
+        ).join(
+            Payment, Payment.customer_id == distinct_client_telecaller.c.client_id
+        ).join(
+            Order, Order.id == Payment.order_id
+        ).join(
+            OrderItem, OrderItem.order_id == Order.id
+        ).where(
+            or_(
+                OrderItem.gym_id != '1',
+                OrderItem.gym_id.is_(None)
+            )
+        ).group_by(distinct_client_telecaller.c.telecaller_id)
 
-            # Count only the latest (rn = 1) for each client
-            count_stmt = select(func.count()).select_from(ranked).where(ranked.c.rn == 1)
-            count_result = await db.execute(count_stmt)
-            total_converted = count_result.scalar() or 0
+        revenue_result = await db.execute(revenue_query)
+        for row in revenue_result.all():
+            if row.telecaller_id in telecaller_dict:
+                telecaller_dict[row.telecaller_id]["total_revenue"] = float(row.amount_minor) / 100
 
-            telecaller_list.append({
-                "id": telecaller.id,
-                "name": telecaller.name,
-                "mobile_number": telecaller.mobile_number,
-                "total_converted": total_converted
-            })
+        # Convert dict back to list
+        telecaller_list = list(telecaller_dict.values())
 
         return {
             "success": True,
@@ -356,11 +416,13 @@ async def get_telecallers_with_conversion_count(
                 "telecallers": telecaller_list,
                 "total": len(telecaller_list)
             },
-            "message": "Telecallers with conversion count fetched successfully"
+            "message": "Telecallers with conversion count and revenue fetched successfully"
         }
 
     except Exception as e:
-        raise Exception(f"Failed to fetch telecallers with conversion count: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise Exception(f"Failed to fetch telecallers: {str(e)}")
 
 
 @router.get("/telecallers/{telecaller_id}/converted-clients")
