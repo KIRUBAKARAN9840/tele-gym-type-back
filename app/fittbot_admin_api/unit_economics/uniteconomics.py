@@ -418,16 +418,74 @@ async def get_unit_economics(
 
     logging.info(f"[UnitEconomics] LTV calculated: {ltv}")
 
+    # ========== D7 RETENTION CALCULATION ==========
+    # Same logic as D30 but with weeks instead of months
+    # Week N-2 = 2nd previous completed week
+    # Week N-1 = Most recent completed week
+
+    # Get current day of week (0 = Monday, 6 = Sunday)
+    current_weekday = today.weekday()
+
+    # Calculate start of current week (Monday)
+    current_week_start = today - timedelta(days=current_weekday)
+
+    # Week N-1 (previous completed week)
+    week_n1_start = current_week_start - timedelta(weeks=1)
+    week_n1_end = current_week_start - timedelta(days=1)
+
+    # Week N-2 (week before that)
+    week_n2_start = current_week_start - timedelta(weeks=2)
+    week_n2_end = week_n1_start - timedelta(days=1)
+
+    logging.info(f"[UnitEconomics] Week N-2: {week_n2_start} to {week_n2_end}")
+    logging.info(f"[UnitEconomics] Week N-1: {week_n1_start} to {week_n1_end}")
+
+    # Step 1: Get Week N-2 Active Users
+    week_n2_users_result = await db.execute(
+        select(ActiveUser.client_id).where(
+            and_(
+                func.date(ActiveUser.created_at) >= week_n2_start,
+                func.date(ActiveUser.created_at) <= week_n2_end
+            )
+        ).distinct()
+    )
+    week_n2_client_ids = set([row[0] for row in week_n2_users_result.fetchall()])
+    week_n2_count = len(week_n2_client_ids)
+
+    logging.info(f"[UnitEconomics] Week N-2 active users: {week_n2_count}")
+
+    # Step 2: Get Week N-1 Active Users
+    week_n1_users_result = await db.execute(
+        select(ActiveUser.client_id).where(
+            and_(
+                func.date(ActiveUser.created_at) >= week_n1_start,
+                func.date(ActiveUser.created_at) <= week_n1_end
+            )
+        ).distinct()
+    )
+    week_n1_client_ids = set([row[0] for row in week_n1_users_result.fetchall()])
+    week_n1_count = len(week_n1_client_ids)
+
+    logging.info(f"[UnitEconomics] Week N-1 active users: {week_n1_count}")
+
+    # Step 3: Find D7 Retained Users (present in both Week N-2 and Week N-1)
+    d7_retained_client_ids = week_n2_client_ids.intersection(week_n1_client_ids)
+    d7_retained_count = len(d7_retained_client_ids)
+
+    logging.info(f"[UnitEconomics] D7 Retained users: {d7_retained_count}")
+
     # Combine all data
     analytics_data = {
         # CAC Data
         "cac": round(cac, 2),
         "totalExpenses": round(total_expenses, 2),
         "totalNewUsers": total_new_users,
-        # LTV Data
+        # LTV Data (D30 Retention)
         "ltv": round(ltv, 2),
         "cohortRetentionRate": round(churn_rate, 4),
         "retainedUsers": retained_count,
+        # D7 Retention Data
+        "d7_retained_users": d7_retained_count,
         # Filters
         "filters": {
             "startDate": start_date_obj.isoformat(),
