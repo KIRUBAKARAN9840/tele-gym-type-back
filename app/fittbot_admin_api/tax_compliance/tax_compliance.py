@@ -6,6 +6,7 @@ from sqlalchemy import func, and_, select, distinct
 from pydantic import BaseModel
 from typing import Optional
 from decimal import Decimal
+import calendar
 
 from app.models.async_database import get_async_db
 from app.models.adminmodels import TaxCompliance
@@ -291,6 +292,98 @@ async def update_paid_amounts(
         await db.rollback()
         import logging
         logging.error(f"[TAX_COMPLIANCE] Error updating paid amounts: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/export")
+async def export_tax_compliance_data(
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Export tax compliance data for a date range.
+    Returns monthly data including GST and TDS collected, paid, and payable amounts.
+    """
+    try:
+        import logging
+
+        # Parse dates
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+        if start > end:
+            raise HTTPException(status_code=400, detail="Start date cannot be after end date")
+
+        # Fetch ALL paid entries in a single query
+        paid_query = select(TaxCompliance)
+        paid_result = await db.execute(paid_query)
+        all_paid_records = paid_result.scalars().all()
+
+        # Create a dictionary for quick lookup: month -> (gst_paid, tds_paid)
+        paid_dict = {
+            record.month: (record.gst_paid or 0.0, record.tds_paid or 0.0)
+            for record in all_paid_records
+        }
+
+        monthly_data = []
+
+        # Generate all months in the date range
+        current = start
+        while current <= end:
+            # Get month start and end
+            month_start = date(current.year, current.month, 1)
+            last_day_of_month = calendar.monthrange(current.year, current.month)[1]
+            month_end = date(current.year, current.month, min(last_day_of_month, end.day))
+
+            # Format month string (YYYY-MM)
+            month_str = f"{current.year}-{current.month:02d}"
+
+            # Get calculated GST and TDS collected (using centralized service)
+            calculated_data = await get_monthly_gst_tds_optimized(
+                db, month_start, month_end
+            )
+            gst_collected = calculated_data["gst_collected"]
+            tds_collected = calculated_data["tds_collected"]
+
+            # Get paid amounts from dictionary
+            gst_paid, tds_paid = paid_dict.get(month_str, (0.0, 0.0))
+
+            # Calculate payable amounts
+            gst_payable = round(gst_collected - gst_paid, 2)
+            tds_payable = round(tds_collected - tds_paid, 2)
+
+            # Format month display name
+            month_name = month_start.strftime("%B %Y")
+
+            monthly_data.append({
+                "month": month_str,
+                "month_display": month_name,
+                "gst_collected": gst_collected,
+                "gst_paid": round(gst_paid, 2),
+                "gst_payable": gst_payable,
+                "tds_collected": tds_collected,
+                "tds_paid": round(tds_paid, 2),
+                "tds_payable": tds_payable
+            })
+
+            # Move to next month
+            if current.month == 12:
+                current = date(current.year + 1, 1, 1)
+            else:
+                current = date(current.year, current.month + 1, 1)
+
+        return {
+            "success": True,
+            "data": monthly_data
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
+    except Exception as e:
+        logging.error(f"[TAX_COMPLIANCE] Error: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

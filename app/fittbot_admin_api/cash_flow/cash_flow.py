@@ -563,6 +563,10 @@ async def get_monthly_cash_flow_data(
                 "opening_balance": round(month_opening_balance, 2),
                 "inflow": round(total_inflow_paise / 100, 2),
                 "outflow": round(total_outflow_paise / 100, 2),
+                "gym_payout": round(total_gym_payout / 100, 2),
+                "gst_payable": round(total_gst_payable_paise / 100, 2),
+                "tds_payable": round(total_tds_payable_paise / 100, 2),
+                "expenses": round(total_expenses_paise / 100, 2),
                 "net_cash_flow": round(net_cash_flow_paise / 100, 2),
                 "closing_balance": round(closing_balance_rupees, 2),
                 "burn_rate": round(burn_rate_rupees, 2),
@@ -599,6 +603,166 @@ async def get_monthly_cash_flow_data(
             }
         }
 
+    except Exception as e:
+        print(f"[CASH_FLOW] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/export")
+async def export_cash_flow_data(
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Export cash flow data for a date range.
+    Returns monthly data including opening balance, outflow breakdown, net cash flow, closing balance, burn rate, and runway.
+    """
+    try:
+        # Parse dates
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+        if start > end:
+            raise HTTPException(status_code=400, detail="Start date cannot be after end date")
+
+        # Fetch opening balances
+        ob_stmt = select(OpeningBalance).order_by(OpeningBalance.financial_year.desc())
+        ob_result = await db.execute(ob_stmt)
+        opening_balances = ob_result.scalars().all()
+
+        # Create opening balance lookup by financial year
+        opening_balance_dict = {ob.financial_year: ob.amount for ob in opening_balances}
+
+        monthly_data = []
+
+        # Generate all months in the date range
+        current = start
+        while current <= end:
+            # Get month start and end
+            month_start = date(current.year, current.month, 1)
+            last_day_of_month = calendar.monthrange(current.year, current.month)[1]
+            month_end = date(current.year, current.month, min(last_day_of_month, end.day))
+
+            # Use centralized revenue service
+            revenue_data = await get_revenue_breakdown(
+                db=db,
+                start_date=month_start,
+                end_date=month_end,
+                exclude_gym_id_one=False
+            )
+
+            # Extract revenues (all in PAISA)
+            daily_pass_revenue = revenue_data.daily_pass
+            sessions_revenue = revenue_data.sessions
+            gym_membership_revenue = revenue_data.gym_membership
+            fittbot_subscription_revenue = revenue_data.fittbot_subscription
+
+            # Calculate payouts and deductions
+            membership_payout, membership_comm, membership_pg, membership_tds = calculate_membership_payout(
+                gym_membership_revenue
+            )
+            daily_pass_payout, daily_pass_comm, daily_pass_pg, daily_pass_tds = calculate_daily_pass_session_payout(
+                daily_pass_revenue
+            )
+            sessions_payout, sessions_comm, sessions_pg, sessions_tds = calculate_daily_pass_session_payout(
+                sessions_revenue
+            )
+
+            # Calculate totals
+            total_gym_payout = membership_payout + daily_pass_payout + sessions_payout
+
+            # GST Payable
+            gst_on_subscription_paise = int(Decimal(str(fittbot_subscription_revenue)) * Decimal("0.18"))
+            gst_on_commission_paise = (
+                int(Decimal(str(membership_comm)) * Decimal("0.18")) +
+                int(Decimal(str(daily_pass_comm)) * Decimal("0.18")) +
+                int(Decimal(str(sessions_comm)) * Decimal("0.18"))
+            )
+            total_gst_payable_paise = gst_on_subscription_paise + gst_on_commission_paise
+
+            # TDS Payable
+            total_tds_payable_paise = membership_tds + daily_pass_tds + sessions_tds
+
+            # Expenses
+            total_expenses_rupees = 0.0
+            try:
+                expenses_stmt = (
+                    select(func.coalesce(func.sum(Expenses.amount), 0))
+                    .where(Expenses.expense_date >= month_start)
+                    .where(Expenses.expense_date <= month_end)
+                )
+                expenses_result = await db.execute(expenses_stmt)
+                total_expenses_rupees = expenses_result.scalar() or 0.0
+            except Exception as e:
+                print(f"[CASH_FLOW] Error fetching Expenses: {e}")
+
+            total_expenses_paise = int(total_expenses_rupees * 100)
+
+            # Calculate inflow, outflow, and net cash flow (in rupees)
+            total_inflow_paise = daily_pass_revenue + sessions_revenue + gym_membership_revenue + fittbot_subscription_revenue
+            total_outflow_paise = total_gym_payout + total_gst_payable_paise + total_tds_payable_paise + total_expenses_paise
+            net_cash_flow_paise = total_inflow_paise - total_outflow_paise
+
+            # Calculate opening balance for this month
+            month = current.month
+            year = current.year
+            if month >= 4:
+                month_fy = f"{year}-{year + 1}"
+            else:
+                month_fy = f"{year - 1}-{year}"
+
+            month_opening_balance = opening_balance_dict.get(month_fy, 0)
+
+            # Calculate closing balance (Opening Balance + Net Cash Flow)
+            closing_balance_paise = int(month_opening_balance * 100) + net_cash_flow_paise
+
+            # Calculate burn rate (absolute value of negative cash flow)
+            burn_rate_paise = abs(net_cash_flow_paise) if net_cash_flow_paise < 0 else 0
+
+            # Calculate runway
+            closing_balance_rupees = closing_balance_paise / 100
+            burn_rate_rupees = burn_rate_paise / 100
+
+            if closing_balance_paise > 0 and net_cash_flow_paise < 0:
+                runway = closing_balance_rupees / burn_rate_rupees
+            else:
+                runway = 0
+
+            month_name = month_start.strftime("%B %Y")
+
+            monthly_data.append({
+                "month": month_start.strftime("%Y-%m"),
+                "month_display": month_name,
+                "financial_year": month_fy,
+                "opening_balance": round(month_opening_balance, 2),
+                "outflow": round(total_outflow_paise / 100, 2),
+                "gym_payout": round(total_gym_payout / 100, 2),
+                "gst_payable": round(total_gst_payable_paise / 100, 2),
+                "tds_payable": round(total_tds_payable_paise / 100, 2),
+                "expenses": round(total_expenses_paise / 100, 2),
+                "net_cash_flow": round(net_cash_flow_paise / 100, 2),
+                "closing_balance": round(closing_balance_rupees, 2),
+                "burn_rate": round(burn_rate_rupees, 2),
+                "runway": round(runway, 1)
+            })
+
+            # Move to next month
+            # Add one month to current date
+            if current.month == 12:
+                current = date(current.year + 1, 1, 1)
+            else:
+                current = date(current.year, current.month + 1, 1)
+
+        return {
+            "success": True,
+            "data": monthly_data
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
     except Exception as e:
         print(f"[CASH_FLOW] Error: {str(e)}")
         import traceback
