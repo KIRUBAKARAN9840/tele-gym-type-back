@@ -7,6 +7,12 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, and_, select, distinct, or_, text, String, desc
 from sqlalchemy.sql.expression import literal
 
+from sqlalchemy.orm import Session
+import io
+import pandas as pd
+from fastapi.responses import StreamingResponse
+from openpyxl.styles import PatternFill, Font, Alignment
+
 # Import centralized revenue service for consistency
 from app.fittbot_admin_api.revenue_service import (
     get_revenue_breakdown,
@@ -19,7 +25,7 @@ from app.models.fittbot_models import (
     SessionSetting, GymPlans, GymStudiosPic, GymOnboardingPics,
     SessionBookingDay, SessionBooking, ClassSession, ClientFittbotAccess, ActiveUser, SessionPurchase
 )
-from app.models.adminmodels import(SupportTicketAssignment,Admins)
+from app.models.adminmodels import(TicketAssignment, Employees, Admins)
 from app.models.async_database import get_async_db
 from app.fittbot_api.v1.payments.models.subscriptions import Subscription
 from app.fittbot_api.v1.payments.models.catalog import CatalogProduct
@@ -1326,7 +1332,7 @@ async def get_support_tickets_list(
     try:
 
         if source == "Fittbot Business":
-    
+            # Query gym owner support tokens
             base_model = OwnerToken
             query = select(
                 OwnerToken.id,
@@ -1341,14 +1347,14 @@ async def get_support_tickets_list(
                 OwnerToken.comments,
                 OwnerToken.created_at,
                 OwnerToken.resolved_at,
-                Admins.name.label('assigned_to'),
+                Employees.name.label('assigned_to'),
             ).outerjoin(
                 Gym, OwnerToken.gym_id == Gym.gym_id
             ).outerjoin(
-                SupportTicketAssignment,
-                (SupportTicketAssignment.ticket_id == OwnerToken.id) & (SupportTicketAssignment.ticket_source == "Fittbot Business")
+                TicketAssignment,
+                (TicketAssignment.ticket_id == OwnerToken.id) & (TicketAssignment.ticket_source == "Fittbot Business") & (TicketAssignment.status == "active")
             ).outerjoin(
-                Admins, Admins.admin_id == SupportTicketAssignment.admin_id
+                Employees, Employees.id == TicketAssignment.employee_id
             )
         elif source == "Fittbot":
             # Query client support tokens
@@ -1366,14 +1372,14 @@ async def get_support_tickets_list(
                 ClientToken.comments,
                 ClientToken.created_at,
                 ClientToken.resolved_at,
-                Admins.name.label('assigned_to'),
+                Employees.name.label('assigned_to'),
             ).outerjoin(
                 Client, ClientToken.client_id == Client.client_id
             ).outerjoin(
-                SupportTicketAssignment,
-                (SupportTicketAssignment.ticket_id == ClientToken.id) & (SupportTicketAssignment.ticket_source == "Fittbot")
+                TicketAssignment,
+                (TicketAssignment.ticket_id == ClientToken.id) & (TicketAssignment.ticket_source == "Fittbot") & (TicketAssignment.status == "active")
             ).outerjoin(
-                Admins, Admins.admin_id == SupportTicketAssignment.admin_id
+                Employees, Employees.id == TicketAssignment.employee_id
             )
         else:
             raise HTTPException(status_code=400, detail="Invalid source. Use 'Fittbot' or 'Fittbot Business'")
@@ -1408,7 +1414,7 @@ async def get_support_tickets_list(
             count_query = count_query.filter(base_model.resolved == False)
         elif status == "follow_up":
             count_query = count_query.filter(base_model.followed_up == True, base_model.resolved == False)
-# No filter — count all tickets
+        
         if search:
             search_term = f"%{search.lower()}%"
             count_query = count_query.filter(
@@ -1457,12 +1463,13 @@ async def get_support_tickets_list(
                 "assigned_to": row.assigned_to or None,
             })
 
-        total_pages = math.ceil(total_count / limit) if total_count > 0 else 1
+        total_pages = (total_count + limit - 1) // limit if total_count > 0 else 1
         has_next = page < total_pages
         has_prev = page > 1
 
         return {
             "success": True,
+            "message": "Tickets fetched successfully",
             "data": {
                 "tickets": tickets,
                 "total": total_count,
@@ -1471,14 +1478,166 @@ async def get_support_tickets_list(
                 "totalPages": total_pages,
                 "hasNext": has_next,
                 "hasPrev": has_prev
-            },
-            "message": "Support tickets fetched successfully"
+            }
         }
-
-    except HTTPException:
-        raise
     except Exception as e:
+        print(f"Error fetching support tickets: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error fetching support tickets: {str(e)}")
+
+@router.get("/support-tickets-export")
+async def export_support_tickets(
+    source: str = Query(..., description="Fittbot or Fittbot Business"),
+    start_date: str = Query(None),
+    end_date: str = Query(None),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Export support tickets to Excel with 4 sheets based on status.
+    Applies date range filter.
+    """
+    try:
+        import io
+        import pandas as pd
+        from fastapi.responses import StreamingResponse
+
+        # Determine models based on source
+        if source == "Fittbot Business":
+            base_model = OwnerToken
+            user_model = Gym
+            join_col = OwnerToken.gym_id == Gym.gym_id
+            ticket_source_val = "Fittbot Business"
+        elif source == "Fittbot":
+            base_model = ClientToken
+            user_model = Client
+            join_col = ClientToken.client_id == Client.client_id
+            ticket_source_val = "Fittbot"
+        else:
+            raise HTTPException(status_code=400, detail="Invalid source. Use 'Fittbot' or 'Fittbot Business'")
+
+        # Build base query
+        stmt = select(
+            base_model.token.label('ticket_id'),
+            base_model.subject,
+            base_model.issue.label('issue_description'),
+            base_model.comments,
+            base_model.followed_up,
+            base_model.resolved,
+            base_model.created_at,
+            base_model.resolved_at,
+            Employees.name.label('assigned_to')
+        ).outerjoin(
+            user_model, join_col
+        ).outerjoin(
+            TicketAssignment,
+            (TicketAssignment.ticket_id == base_model.id) & (TicketAssignment.ticket_source == ticket_source_val) & (TicketAssignment.status == "active")
+        ).outerjoin(
+            Employees, Employees.id == TicketAssignment.employee_id
+        )
+
+        # Apply date filters
+        if start_date:
+            stmt = stmt.filter(func.date(base_model.created_at) >= start_date)
+        if end_date:
+            stmt = stmt.filter(func.date(base_model.created_at) <= end_date)
+
+        # Order by created_at descending
+        stmt = stmt.order_by(base_model.created_at.desc())
+
+        # Execute query
+        result = await db.execute(stmt)
+        all_tickets = result.all()
+
+        # Group data for sheets
+        def get_status(followed_up, resolved):
+            if resolved: return "Resolved"
+            elif followed_up: return "Follow Up"
+            else: return "Pending"
+
+        data_all = []
+        data_resolved = []
+        data_unresolved = []
+        data_followup = []
+
+        for row in all_tickets:
+            status = get_status(row.followed_up, row.resolved)
+            item = {
+                "Ticket ID": row.ticket_id,
+                "Subject": row.subject or "N/A",
+                "Status": status,
+                "Assigned To": row.assigned_to or "N/A",
+                "Issue Description": row.issue_description or "N/A",
+                "Comments": row.comments or "N/A",
+                "Created At": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else "N/A",
+                "Resolved At": row.resolved_at.strftime("%Y-%m-%d %H:%M:%S") if row.resolved_at else "N/A"
+            }
+            
+            data_all.append(item)
+            if status == "Resolved":
+                data_resolved.append(item)
+            elif status == "Pending":
+                data_unresolved.append(item)
+            elif status == "Follow Up":
+                data_followup.append(item)
+
+        # Create Excel in memory
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Sheets configuration
+            sheets = [
+                ("All Tickets", data_all),
+                ("Resolved", data_resolved),
+                ("Unresolved", data_unresolved),
+                ("Follow Up", data_followup)
+            ]
+            
+            for sheet_name, data in sheets:
+                df = pd.DataFrame(data)
+                if df.empty:
+                    # Create even if empty to satisfy the requirement of 4 sheets
+                    df = pd.DataFrame(columns=["Ticket ID", "Subject", "Status", "Assigned To", "Issue Description", "Comments", "Created At", "Resolved At"])
+                
+                df.to_excel(writer, index=False, sheet_name=sheet_name)
+                
+                # Auto-adjust column widths and style header
+                worksheet = writer.sheets[sheet_name]
+                header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")  # Steel Blue
+                header_font = Font(color="FFFFFF", bold=True)
+                
+                for idx, col in enumerate(df.columns, 1):
+                    # Style header cell
+                    cell = worksheet.cell(row=1, column=idx)
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = Alignment(horizontal="center")
+                    
+                    series = df[col]
+                    max_len = max(
+                        series.astype(str).map(len).max(),
+                        len(str(col))
+                    ) + 2
+                    col_letter = worksheet.cell(row=1, column=idx).column_letter
+                    worksheet.column_dimensions[col_letter].width = min(max_len, 60)
+
+        output.seek(0)
+        
+        # Filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_source = source.replace(" ", "_")
+        filename = f"Support_Tickets_{safe_source}_{timestamp}.xlsx"
+
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except Exception as e:
+        print(f"Error exporting support tickets: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error exporting support tickets: {str(e)}")
     
 
 @router.get("/gym-ticket-detail")
