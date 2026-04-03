@@ -5,14 +5,7 @@ from sqlalchemy import func, and_, select, distinct
 from decimal import Decimal
 
 from app.models.async_database import get_async_db
-<<<<<<< HEAD
-from app.models.dailypass_models import get_dailypass_session, DailyPass
-from app.models.fittbot_models import (
-    SessionBookingDay, SessionBooking, Gym, ActiveUser, FittbotGymMembership
-)
-=======
 from app.models.fittbot_models import ActiveUser, Client
->>>>>>> new-feature
 from app.fittbot_api.v1.payments.models.payments import Payment
 from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
 from app.models.adminmodels import Expenses
@@ -27,108 +20,6 @@ from app.fittbot_admin_api.revenue_service import (
 router = APIRouter(prefix="/api/admin/financials", tags=["AdminFinancials"])
 
 
-<<<<<<< HEAD
-async def get_revenue_breakdown_optimized(db: AsyncSession, dailypass_session, start_date, end_date):
-    """
-    Calculate revenue breakdown using optimized bulk queries.
-    No loops with database calls - all queries are aggregated.
-    """
-
-    # 1. DAILY PASS REVENUE - Single aggregated query
-    # Exclude gym_id = 1
-    daily_pass_revenue = 0
-    try:
-        daily_pass_stmt = (
-            select(func.coalesce(func.sum(DailyPass.amount_paid), 0))
-            .where(func.date(DailyPass.created_at) >= start_date)
-            .where(func.date(DailyPass.created_at) <= end_date)
-            .where(DailyPass.gym_id != "1")
-        )
-        daily_pass_result = await db.execute(daily_pass_stmt)
-        daily_pass_revenue = float(daily_pass_result.scalar() or 0)
-    except Exception as e:
-        print(f"[FINANCIALS] Error fetching Daily Pass: {e}")
-
-    # 2. SESSIONS REVENUE - Single aggregated query
-    # Exclude gym_id = 1
-    sessions_revenue = 0
-    try:
-        sessions_stmt = (
-            select(func.coalesce(func.sum(SessionBooking.price_paid), 0))
-            .join(SessionBookingDay, SessionBooking.schedule_id == SessionBookingDay.schedule_id)
-            .where(func.date(SessionBookingDay.booking_date) >= start_date)
-            .where(func.date(SessionBookingDay.booking_date) <= end_date)
-            .where(SessionBookingDay.gym_id != 1)
-        )
-        sessions_result = await db.execute(sessions_stmt)
-        sessions_revenue = float(sessions_result.scalar() or 0)
-    except Exception as e:
-        print(f"[FINANCIALS] Error fetching Sessions: {e}")
-
-    # 3. FITTBOT SUBSCRIPTION REVENUE - Two bulk aggregated queries
-    # Exclude gym_id = 1
-    fittbot_subscription_revenue = 0
-    try:
-        # Method 1: Payments + Orders join (with OrderItem for gym_id filter)
-        fittbot_stmt_1 = (
-            select(func.coalesce(func.sum(Order.gross_amount_minor), 0))
-            .join(Payment, Payment.order_id == Order.id)
-            .join(OrderItem, OrderItem.order_id == Order.id)
-            .where(Payment.provider == "google_play")
-            .where(Payment.status == "captured")
-            .where(Order.status == "paid")
-            .where(func.date(Payment.captured_at) >= start_date)
-            .where(func.date(Payment.captured_at) <= end_date)
-            .where(or_(OrderItem.gym_id != "1", OrderItem.gym_id.is_(None)))
-        )
-        fittbot_result_1 = await db.execute(fittbot_stmt_1)
-        fittbot_subscription_revenue += float(fittbot_result_1.scalar() or 0)
-
-        # Method 2: Orders with provider_order_id like 'sub_%' (with OrderItem for gym_id filter)
-        fittbot_stmt_2 = (
-            select(func.coalesce(func.sum(Order.gross_amount_minor), 0))
-            .join(OrderItem, OrderItem.order_id == Order.id)
-            .where(Order.provider_order_id.like("sub_%"))
-            .where(Order.status == "paid")
-            .where(func.date(Order.created_at) >= start_date)
-            .where(func.date(Order.created_at) <= end_date)
-            .where(or_(OrderItem.gym_id != "1", OrderItem.gym_id.is_(None)))
-        )
-        fittbot_result_2 = await db.execute(fittbot_stmt_2)
-        fittbot_subscription_revenue += float(fittbot_result_2.scalar() or 0)
-    except Exception as e:
-        print(f"[FINANCIALS] Error fetching Fittbot Subscription: {e}")
-
-    # 4. GYM MEMBERSHIP REVENUE - Direct table check (same as MRR API)
-    # Exclude gym_id = 1
-    gym_membership_revenue = 0
-    try:
-        gym_membership_stmt = (
-            select(func.coalesce(func.sum(FittbotGymMembership.amount), 0))
-            .where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
-            .where(func.date(FittbotGymMembership.purchased_at) >= start_date)
-            .where(func.date(FittbotGymMembership.purchased_at) <= end_date)
-            .where(FittbotGymMembership.gym_id != "1")
-        )
-        gym_membership_result = await db.execute(gym_membership_stmt)
-        # Amount is in rupees, convert to paise (convert to float to avoid Decimal type issues)
-        gym_membership_revenue = float(gym_membership_result.scalar() or 0) * 100
-    except Exception as e:
-        print(f"[FINANCIALS] Error fetching Gym Membership: {e}")
-
-    total_revenue = daily_pass_revenue + sessions_revenue + fittbot_subscription_revenue + gym_membership_revenue
-
-    return {
-        "total_revenue": total_revenue,
-        "daily_pass": daily_pass_revenue,
-        "sessions": sessions_revenue,
-        "fittbot_subscription": fittbot_subscription_revenue,
-        "gym_membership": gym_membership_revenue
-    }
-
-
-=======
->>>>>>> new-feature
 def calculate_membership_payout(membership_revenue):
     """
     Calculate gym payout for membership revenue.
