@@ -168,6 +168,7 @@ async def get_gym_stats(
     price_sort: Optional[str] = Query(None, description="Sort by session price"),
     registered_users_filter: Optional[str] = Query(None, description="Filter by registered users count (e.g., '50', '100', '150')"),
     city: Optional[str] = Query(None, description="Filter by city"),
+    state: Optional[str] = Query(None, description="Filter by state"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -271,9 +272,17 @@ async def get_gym_stats(
             except (ValueError, TypeError):
                 pass  # Invalid filter, ignore it
 
-        # Apply city filter (case-insensitive to handle normalized city names from frontend)
+        # Apply city filter — use TRIM + LOWER on both sides to handle spaces in DB values
         if city:
-            base_stmt = base_stmt.where(func.lower(Gym.city) == city.lower())
+            base_stmt = base_stmt.where(
+                func.lower(func.trim(Gym.city)) == city.strip().lower()
+            )
+
+        # Apply state filter — use TRIM + LOWER on both sides to handle spaces in DB values
+        if state:
+            base_stmt = base_stmt.where(
+                func.lower(func.trim(Gym.state)) == state.strip().lower()
+            )
 
         # Apply sorting
         if sort_order == "asc":
@@ -294,6 +303,31 @@ async def get_gym_stats(
         # Execute the optimized query
         result = await db.execute(base_stmt)
         gyms_data = result.all()
+
+        # Fetch distinct cities and states in two single async queries (no loops, no N+1)
+        cities_stmt = (
+            select(Gym.city)
+            .where(Gym.city.isnot(None))
+            .where(Gym.city != "")
+            .where(Gym.city != "-")
+            .where(Gym.city != "N/A")
+            .distinct()
+            .order_by(Gym.city)
+        )
+        cities_result = await db.execute(cities_stmt)
+        all_cities = [row[0].strip() for row in cities_result.all() if row[0] and row[0].strip()]
+
+        states_stmt = (
+            select(Gym.state)
+            .where(Gym.state.isnot(None))
+            .where(Gym.state != "")
+            .where(Gym.state != "-")
+            .where(Gym.state != "N/A")
+            .distinct()
+            .order_by(Gym.state)
+        )
+        states_result = await db.execute(states_stmt)
+        all_states = [row[0].strip() for row in states_result.all() if row[0] and row[0].strip()]
 
         # Build response list (only needed fields)
         gyms = []
@@ -329,7 +363,9 @@ async def get_gym_stats(
                 "totalPages": total_pages,
                 "hasNext": has_next,
                 "hasPrev": has_prev,
-                "unverified_gyms_count": unverified_count
+                "unverified_gyms_count": unverified_count,
+                "cities": all_cities,
+                "states": all_states
             },
             "message": "Gym statistics fetched successfully"
         }
@@ -385,30 +421,7 @@ async def get_gym_stats_summary(db: AsyncSession = Depends(get_async_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching gym summary: {str(e)}")
 
-@router.get("/cities")
-async def get_gym_cities(db: AsyncSession = Depends(get_async_db)):
-    """Get list of unique cities from gyms"""
-    try:
-        result = await db.execute(
-            select(Gym.city)
-            .where(Gym.city.isnot(None))
-            .where(Gym.city != "")
-            .where(Gym.city != "-")
-            .where(Gym.city != "N/A")
-            .distinct()
-            .order_by(Gym.city)
-        )
-        cities = [row[0] for row in result.all()]
 
-        return {
-            "success": True,
-            "data": {
-                "cities": cities
-            },
-            "message": "Cities fetched successfully"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching cities: {str(e)}")
 
 @router.get("/unverified")
 async def get_unverified_gyms(
