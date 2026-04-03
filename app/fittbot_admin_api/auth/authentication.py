@@ -73,6 +73,21 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         if not verify_password(password, stored_password):
             raise HTTPException(status_code=401, detail="Invalid password")
 
+        # Check if TOTP is enabled
+        if user.totp_enabled:
+            # Return different response - TOTP required
+            return {
+                "status": 200,
+                "message": "Password verified. TOTP code required.",
+                "require_totp": True,
+                "data": {
+                    "mobile_number": mobile_number,
+                    "user_id": admin.admin_id,
+                    "name": admin.name
+                }
+            }
+
+        # TOTP not enabled - proceed with normal login
         # Create tokens
         access_token = create_access_token({"sub": str(admin.admin_id), "role": role, "user_type": "admin"})
         refresh_token = create_refresh_token({"sub": str(admin.admin_id), "user_type": "admin"})
@@ -628,33 +643,34 @@ async def get_profile(request: Request, db: Session = Depends(get_db)):
 
 
 async def get_current_user_from_cookie(request: Request, db: Session = Depends(get_db)):
-    """Helper function to get current user (admin or employee) from httpOnly cookie"""
+    """Helper function to get current user (admin, support, or employee) from httpOnly cookie"""
     access_token = request.cookies.get("access_token")
-    
+
     if not access_token:
         raise HTTPException(status_code=401, detail="No access token found")
-    
+
     try:
         payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
         user_type = payload.get("user_type")
-        
+
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-    
-        if user_type == "admin":
+
+        # Support users are stored in Admins table with role="support"
+        if user_type in ("admin", "support"):
             user = db.query(Admins).filter(Admins.admin_id == int(user_id)).first()
             if not user:
-                raise HTTPException(status_code=404, detail="Admin not found")
+                raise HTTPException(status_code=404, detail="User not found")
         elif user_type == "employee":
             user = db.query(Employees).filter(Employees.id == int(user_id)).first()
             if not user:
                 raise HTTPException(status_code=404, detail="Employee not found")
         else:
             raise HTTPException(status_code=400, detail="Invalid user type")
-            
+
         return user, user_type
-        
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Access token expired")
     except JWTError:
@@ -939,3 +955,382 @@ def get_employee_avatar(name: str) -> str:
     if len(parts) >= 2:
         return f"{parts[0][0]}{parts[1][0]}".upper()
     return name[:2].upper()
+
+
+# ============================================================================
+# TOTP (GOOGLE AUTHENTICATOR) ENDPOINTS
+# ============================================================================
+
+from app.utils.totp_utils import (
+    generate_totp_secret,
+    encrypt_totp_secret,
+    decrypt_totp_secret,
+    verify_totp_code,
+    generate_provisioning_uri,
+    generate_qr_code_base64,
+    generate_backup_codes,
+    verify_backup_code
+)
+
+
+class TOTPSetupRequest(BaseModel):
+    """Request TOTP setup (generate QR code)"""
+    pass
+
+
+class TOTPEnableRequest(BaseModel):
+    """Enable TOTP with verification code"""
+    totp_code: str
+
+
+class TOTPVerifyRequest(BaseModel):
+    """Verify TOTP during login"""
+    mobile_number: str
+    totp_code: str = None
+    backup_code: str = None
+
+
+class TOTPDisableRequest(BaseModel):
+    """Disable TOTP (requires password)"""
+    password: str
+
+
+@router.post("/totp/setup")
+async def setup_totp(request: Request, db: Session = Depends(get_db)):
+    """
+    Generate TOTP secret, QR code, and backup codes.
+    Does NOT enable TOTP yet - user must verify first.
+    """
+    try:
+        # Get current user
+        user, user_type = await get_current_user_from_cookie(request, db)
+
+        # Check if TOTP already enabled
+        if user.totp_enabled:
+            raise HTTPException(
+                status_code=400,
+                detail="TOTP is already enabled. Disable it first to set up again."
+            )
+
+        # Generate TOTP secret
+        totp_secret = generate_totp_secret()
+
+        # Generate provisioning URI for QR code
+        label = user.email if getattr(user, 'email', None) else getattr(user, 'contact_number', None) or user.name
+        provisioning_uri = generate_provisioning_uri(
+            secret=totp_secret,
+            admin_email=label,
+            admin_name=user.name
+        )
+
+        # Generate QR code (base64)
+        qr_code_base64 = generate_qr_code_base64(provisioning_uri)
+
+        # Generate backup codes
+        backup_codes_plaintext, backup_codes_hashed = generate_backup_codes()
+
+        # Return data (NOT stored in DB yet)
+        return {
+            "status": 200,
+            "message": "TOTP setup initiated. Scan QR code and verify to enable.",
+            "data": {
+                "qr_code": f"data:image/png;base64,{qr_code_base64}",
+                "secret": totp_secret,  # For testing/manual entry
+                "backup_codes": backup_codes_plaintext,  # User should save these
+                "backup_codes_hashed": backup_codes_hashed,  # Will be stored when verified
+                "provisioning_uri": provisioning_uri
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error setting up TOTP: {str(e)}")
+
+
+@router.post("/totp/enable")
+async def enable_totp(request_data: TOTPEnableRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Verify TOTP code and enable TOTP for the user.
+    Stores encrypted secret and hashed backup codes.
+    """
+    try:
+        # Get current user
+        user, user_type = await get_current_user_from_cookie(request, db)
+
+        # Check if TOTP already enabled
+        if user.totp_enabled:
+            raise HTTPException(
+                status_code=400,
+                detail="TOTP is already enabled."
+            )
+
+        # Get the unencrypted secret from the client (they got it from /totp/setup)
+        # In production, you might want to store this temporarily in Redis
+        # For now, we'll require the client to send the secret back
+        from pydantic import BaseModel
+
+        class TOTPEnableWithSecretRequest(BaseModel):
+            totp_code: str
+            secret: str
+            backup_codes_hashed: str
+
+        # Parse request body manually to get secret
+        import json
+        body = await request.body()
+        body_data = json.loads(body)
+        totp_code = body_data.get("totp_code")
+        secret = body_data.get("secret")
+        backup_codes_hashed = body_data.get("backup_codes_hashed")
+
+        if not totp_code or not secret or not backup_codes_hashed:
+            raise HTTPException(
+                status_code=400,
+                detail="Missing required fields: totp_code, secret, backup_codes_hashed"
+            )
+
+        # Verify TOTP code
+        if not verify_totp_code(secret, totp_code):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid TOTP code. Please try again."
+            )
+
+        # Encrypt and store TOTP secret
+        encrypted_secret = encrypt_totp_secret(secret)
+
+        # Update user record
+        user.totp_secret = encrypted_secret
+        user.totp_enabled = True
+        user.backup_codes = backup_codes_hashed
+        user.totp_verified_at = datetime.now()
+
+        db.commit()
+
+        return {
+            "status": 200,
+            "message": "TOTP enabled successfully. Please save your backup codes securely.",
+            "data": {
+                "totp_enabled": True
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error enabling TOTP: {str(e)}")
+
+
+@router.post("/totp/verify")
+async def verify_totp_login(request_data: TOTPVerifyRequest, db: Session = Depends(get_db)):
+    """
+    Verify TOTP code or backup code during login.
+    Called after password verification if TOTP is enabled.
+    """
+    try:
+        mobile_number = request_data.mobile_number
+        totp_code = request_data.totp_code
+        backup_code = request_data.backup_code
+
+        # Find user by mobile number
+        admin = db.query(Admins).filter(Admins.contact_number == mobile_number).first()
+        employee = None
+
+        if not admin:
+            employee = db.query(Employees).filter(Employees.contact == mobile_number).first()
+
+        if not admin and not employee:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        user = admin if admin else employee
+        user_type = "admin" if admin else "employee"
+
+        # Check if TOTP is enabled
+        if not user.totp_enabled:
+            raise HTTPException(
+                status_code=400,
+                detail="TOTP is not enabled for this account"
+            )
+
+        # Verify TOTP code
+        if totp_code:
+            # Decrypt TOTP secret
+            decrypted_secret = decrypt_totp_secret(user.totp_secret)
+
+            # Verify code
+            if not verify_totp_code(decrypted_secret, totp_code):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid TOTP code"
+                )
+
+        # Verify backup code
+        elif backup_code:
+            is_valid, updated_codes = verify_backup_code(backup_code, user.backup_codes)
+
+            if not is_valid:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid or already used backup code"
+                )
+
+            # Update backup codes (remove used one)
+            user.backup_codes = updated_codes
+            db.commit()
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Either TOTP code or backup code is required"
+            )
+
+        # Generate tokens
+        role = user.role if user_type == "admin" else getattr(user, 'role', 'employee')
+        access_token = create_access_token({
+            "sub": str(user.admin_id if user_type == "admin" else user.id),
+            "role": role,
+            "user_type": user_type
+        })
+        refresh_token = create_refresh_token({
+            "sub": str(user.admin_id if user_type == "admin" else user.id),
+            "user_type": user_type
+        })
+
+        # Save refresh token
+        user.refresh_token = refresh_token
+        db.commit()
+
+        # Create response with cookies
+        json_response = JSONResponse(content={
+            "status": 200,
+            "message": "Login successful",
+            "data": {
+                "user_id": user.admin_id if user_type == "admin" else user.id,
+                "role": role,
+                "name": user.name,
+                "user_type": user_type,
+                "totp_enabled": True
+            },
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer"
+        })
+
+        # Set cookies
+        logger.info(
+            "[totp-verify] Setting cookies - secure=%s domain=%r samesite=%s",
+            settings.cookie_secure,
+            settings.cookie_domain_value,
+            settings.cookie_samesite_value,
+        )
+
+        json_response.set_cookie(
+            key="access_token",
+            value=access_token,
+            max_age=3600,
+            httponly=True,
+            secure=settings.cookie_secure,
+            domain=settings.cookie_domain_value,
+            samesite=settings.cookie_samesite_value,
+        )
+
+        json_response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            max_age=604800,
+            httponly=True,
+            secure=settings.cookie_secure,
+            domain=settings.cookie_domain_value,
+            samesite=settings.cookie_samesite_value,
+        )
+
+        logger.info(
+            "[totp-verify] Response headers - access_token=%s refresh_token=%s",
+            "access_token" in json_response.headers.raw,
+            "refresh_token" in json_response.headers.raw,
+        )
+
+        return json_response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error verifying TOTP: {str(e)}")
+
+
+@router.post("/totp/disable")
+async def disable_totp(request_data: TOTPDisableRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Disable TOTP for the current user.
+    Requires password confirmation.
+    """
+    try:
+        # Get current user
+        user, user_type = await get_current_user_from_cookie(request, db)
+
+        # Verify password
+        if not verify_password(request_data.password, user.password):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid password"
+            )
+
+        # Disable TOTP
+        user.totp_secret = None
+        user.totp_enabled = False
+        user.backup_codes = None
+        user.totp_verified_at = None
+
+        db.commit()
+
+        return {
+            "status": 200,
+            "message": "TOTP disabled successfully",
+            "data": {
+                "totp_enabled": False
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error disabling TOTP: {str(e)}")
+
+
+@router.get("/totp/status")
+async def get_totp_status(request: Request, db: Session = Depends(get_db)):
+    """
+    Get TOTP status for the current user.
+    """
+    try:
+        # Get current user
+        user, user_type = await get_current_user_from_cookie(request, db)
+
+        # Count remaining backup codes
+        backup_codes_count = 0
+        if user.backup_codes:
+            import json
+            try:
+                backup_codes_list = json.loads(user.backup_codes)
+                backup_codes_count = len(backup_codes_list)
+            except:
+                backup_codes_count = 0
+
+        return {
+            "status": 200,
+            "message": "TOTP status retrieved",
+            "data": {
+                "totp_enabled": user.totp_enabled or False,
+                "backup_codes_remaining": backup_codes_count,
+                "totp_verified_at": user.totp_verified_at.isoformat() if user.totp_verified_at else None
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting TOTP status: {str(e)}")
