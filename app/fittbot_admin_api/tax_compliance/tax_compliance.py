@@ -2,17 +2,20 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, date
-from sqlalchemy import func, and_, select, distinct, case, literal_column
+from sqlalchemy import func, and_, select, distinct
 from pydantic import BaseModel
 from typing import Optional
 from decimal import Decimal
+import calendar
 
 from app.models.async_database import get_async_db
-from app.models.dailypass_models import get_dailypass_session, DailyPass
-from app.models.fittbot_models import SessionBookingDay, SessionBooking, Gym, ActiveUser
-from app.fittbot_api.v1.payments.models.payments import Payment
-from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
 from app.models.adminmodels import TaxCompliance
+
+# Import centralized revenue service
+from app.fittbot_admin_api.revenue_service import (
+    get_revenue_breakdown,
+    paise_to_rupees
+)
 
 router = APIRouter(prefix="/api/admin/tax-compliance", tags=["TaxCompliance"])
 
@@ -66,131 +69,28 @@ def calculate_daily_pass_session_payout_deductions(revenue):
     return float(commission), float(tds_deduction)
 
 
-async def get_monthly_gst_tds(
-    db: AsyncSession,
-    dailypass_session,
-    year: int,
-    month: int
-):
-    """
-    Calculate GST and TDS collected for a specific month.
-    Reuses the same logic as financials/overview API.
-    """
-    # Calculate month start and end dates
-    month_start = datetime(year, month, 1).date()
-
-    if month == 12:
-        month_end = datetime(year + 1, 1, 1).date() - timedelta(days=1)
-    else:
-        month_end = datetime(year, month + 1, 1).date() - timedelta(days=1)
-
-    return await get_monthly_gst_tds_optimized(db, dailypass_session, month_start, month_end)
-
-
 async def get_monthly_gst_tds_optimized(
     db: AsyncSession,
-    dailypass_session,
     month_start: date,
     month_end: date
 ):
     """
     Calculate GST and TDS collected for a date range.
-    Optimized version with explicit date boundaries.
+    Uses centralized revenue service.
     """
-    # Use month_start and month_end directly (already calculated)
+    # Use centralized revenue service
+    revenue_data = await get_revenue_breakdown(
+        db=db,
+        start_date=month_start,
+        end_date=month_end,
+        exclude_gym_id_one=True
+    )
 
-    # 1. DAILY PASS REVENUE
-    daily_pass_revenue = 0
-    try:
-        daily_pass_stmt = (
-            select(func.coalesce(func.sum(DailyPass.amount_paid), 0))
-            .where(func.date(DailyPass.created_at) >= month_start)
-            .where(func.date(DailyPass.created_at) <= month_end)
-        )
-        daily_pass_result = await db.execute(daily_pass_stmt)
-        daily_pass_revenue = daily_pass_result.scalar() or 0
-    except Exception as e:
-        print(f"[TAX_COMPLIANCE] Error fetching Daily Pass: {e}")
-
-    # 2. SESSIONS REVENUE
-    sessions_revenue = 0
-    try:
-        sessions_stmt = (
-            select(func.coalesce(func.sum(SessionBooking.price_paid), 0))
-            .join(SessionBookingDay, SessionBooking.schedule_id == SessionBookingDay.schedule_id)
-            .where(func.date(SessionBookingDay.booking_date) >= month_start)
-            .where(func.date(SessionBookingDay.booking_date) <= month_end)
-        )
-        sessions_result = await db.execute(sessions_stmt)
-        sessions_revenue = sessions_result.scalar() or 0
-    except Exception as e:
-        print(f"[TAX_COMPLIANCE] Error fetching Sessions: {e}")
-
-    # 3. FITTBOT SUBSCRIPTION REVENUE
-    fittbot_subscription_revenue = 0
-    try:
-        # Method 1: Payments + Orders join
-        fittbot_stmt_1 = (
-            select(func.coalesce(func.sum(Order.gross_amount_minor), 0))
-            .join(Payment, Payment.order_id == Order.id)
-            .where(Payment.provider == "google_play")
-            .where(Payment.status == "captured")
-            .where(Order.status == "paid")
-            .where(func.date(Payment.captured_at) >= month_start)
-            .where(func.date(Payment.captured_at) <= month_end)
-        )
-        fittbot_result_1 = await db.execute(fittbot_stmt_1)
-        fittbot_subscription_revenue += fittbot_result_1.scalar() or 0
-
-        # Method 2: Orders with provider_order_id like 'sub_%'
-        fittbot_stmt_2 = (
-            select(func.coalesce(func.sum(Order.gross_amount_minor), 0))
-            .where(Order.provider_order_id.like("sub_%"))
-            .where(Order.status == "paid")
-            .where(func.date(Order.created_at) >= month_start)
-            .where(func.date(Order.created_at) <= month_end)
-        )
-        fittbot_result_2 = await db.execute(fittbot_stmt_2)
-        fittbot_subscription_revenue += fittbot_result_2.scalar() or 0
-    except Exception as e:
-        print(f"[TAX_COMPLIANCE] Error fetching Fittbot Subscription: {e}")
-
-    # 4. GYM MEMBERSHIP REVENUE
-    gym_membership_revenue = 0
-    try:
-        gym_membership_stmt = (
-            select(Order.gross_amount_minor, Order.order_metadata)
-            .join(Payment, Payment.order_id == Order.id)
-            .where(Payment.status == "captured")
-            .where(Order.status == "paid")
-            .where(func.date(Payment.captured_at) >= month_start)
-            .where(func.date(Payment.captured_at) <= month_end)
-        )
-        gym_membership_result = await db.execute(gym_membership_stmt)
-        all_orders = gym_membership_result.all()
-
-        for order in all_orders:
-            amount = order.gross_amount_minor or 0
-            metadata = order.order_metadata
-
-            if not metadata or not isinstance(metadata, dict):
-                continue
-
-            condition1 = False
-            if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
-                if metadata["audit"].get("source") == "dailypass_checkout_api":
-                    condition1 = True
-
-            condition2 = False
-            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
-                    condition2 = True
-
-            if condition1 or condition2:
-                gym_membership_revenue += amount
-
-    except Exception as e:
-        print(f"[TAX_COMPLIANCE] Error fetching Gym Membership: {e}")
+    # Extract revenues (all in PAISA)
+    daily_pass_revenue = revenue_data.daily_pass
+    sessions_revenue = revenue_data.sessions
+    fittbot_subscription_revenue = revenue_data.fittbot_subscription
+    gym_membership_revenue = revenue_data.gym_membership
 
     # Calculate GST Collected
     # Fymble Subscription: 18% GST on total revenue
@@ -251,16 +151,12 @@ async def get_monthly_tax_data(
     """
     try:
         import logging
-        from datetime import date
         import calendar
 
         today = date.today()
 
         # Calculate offset
         offset = (page - 1) * page_size
-
-        # Get dailypass session
-        dailypass_session = get_dailypass_session()
 
         # Fetch ALL paid entries in a single query (no N+1)
         paid_query = select(TaxCompliance)
@@ -274,19 +170,16 @@ async def get_monthly_tax_data(
         }
 
         # Generate ONLY the months needed for the current page
-        # Calculate the starting month offset
         start_month_offset = offset
 
         monthly_data = []
 
         # Generate only the page_size months needed
         for i in range(page_size):
-            # Calculate the actual month index (from start)
             month_index = start_month_offset + i
 
-            # Calculate month and year for this index
-            # Go back month_index months from current month
-            month = today.month - month_index
+            # Calculate month and year starting from previous month
+            month = today.month - 1 - month_index
             year = today.year
             while month <= 0:
                 month += 12
@@ -300,21 +193,21 @@ async def get_monthly_tax_data(
             last_day_of_month = calendar.monthrange(year, month)[1]
             month_end = date(year, month, last_day_of_month)
 
-            # Get calculated GST and TDS collected (optimized query)
+            # Get calculated GST and TDS collected (using centralized service)
             calculated_data = await get_monthly_gst_tds_optimized(
-                db, dailypass_session, month_start, month_end
+                db, month_start, month_end
             )
             gst_collected = calculated_data["gst_collected"]
             tds_collected = calculated_data["tds_collected"]
 
-            # Get paid amounts from dictionary (no additional query!)
+            # Get paid amounts from dictionary
             gst_paid, tds_paid = paid_dict.get(month_str, (0.0, 0.0))
 
             # Calculate payable amounts
             gst_payable = round(gst_collected - gst_paid, 2)
             tds_payable = round(tds_collected - tds_paid, 2)
 
-            # Format month display name (e.g., "January 2026")
+            # Format month display name
             month_name = month_start.strftime("%B %Y")
 
             monthly_data.append({
@@ -328,16 +221,16 @@ async def get_monthly_tax_data(
                 "tds_payable": tds_payable
             })
 
-        dailypass_session.close()
-
-        # Calculate total records (all historical months from start)
-        # Assuming data starts from 2020-01-01 (adjust as needed)
+        # Calculate total records
         start_year = 2025
         start_month = 1
         total_months = (today.year - start_year) * 12 + today.month - start_month + 1
 
         # Calculate total pages
         total_pages = (total_months + page_size - 1) // page_size
+
+        # Reverse to show April -> March order within each financial year
+        monthly_data.reverse()
 
         return {
             "success": True,
@@ -405,4 +298,98 @@ async def update_paid_amounts(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+
+@router.get("/export")
+async def export_tax_compliance_data(
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Export tax compliance data for a date range.
+    Returns monthly data including GST and TDS collected, paid, and payable amounts.
+    """
+    try:
+        import logging
+
+        # Parse dates
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+        if start > end:
+            raise HTTPException(status_code=400, detail="Start date cannot be after end date")
+
+        # Fetch ALL paid entries in a single query
+        paid_query = select(TaxCompliance)
+        paid_result = await db.execute(paid_query)
+        all_paid_records = paid_result.scalars().all()
+
+        # Create a dictionary for quick lookup: month -> (gst_paid, tds_paid)
+        paid_dict = {
+            record.month: (record.gst_paid or 0.0, record.tds_paid or 0.0)
+            for record in all_paid_records
+        }
+
+        monthly_data = []
+
+        # Generate all months in the date range
+        current = start
+        while current <= end:
+            # Get month start and end
+            month_start = date(current.year, current.month, 1)
+            last_day_of_month = calendar.monthrange(current.year, current.month)[1]
+            month_end = date(current.year, current.month, min(last_day_of_month, end.day))
+
+            # Format month string (YYYY-MM)
+            month_str = f"{current.year}-{current.month:02d}"
+
+            # Get calculated GST and TDS collected (using centralized service)
+            calculated_data = await get_monthly_gst_tds_optimized(
+                db, month_start, month_end
+            )
+            gst_collected = calculated_data["gst_collected"]
+            tds_collected = calculated_data["tds_collected"]
+
+            # Get paid amounts from dictionary
+            gst_paid, tds_paid = paid_dict.get(month_str, (0.0, 0.0))
+
+            # Calculate payable amounts
+            gst_payable = round(gst_collected - gst_paid, 2)
+            tds_payable = round(tds_collected - tds_paid, 2)
+
+            # Format month display name
+            month_name = month_start.strftime("%B %Y")
+
+            monthly_data.append({
+                "month": month_str,
+                "month_display": month_name,
+                "gst_collected": gst_collected,
+                "gst_paid": round(gst_paid, 2),
+                "gst_payable": gst_payable,
+                "tds_collected": tds_collected,
+                "tds_paid": round(tds_paid, 2),
+                "tds_payable": tds_payable
+            })
+
+            # Move to next month
+            if current.month == 12:
+                current = date(current.year + 1, 1, 1)
+            else:
+                current = date(current.year, current.month + 1, 1)
+
+        # Reverse to match pagination display order (April -> March within each FY)
+        monthly_data.reverse()
+
+        return {
+            "success": True,
+            "data": monthly_data
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
+    except Exception as e:
+        logging.error(f"[TAX_COMPLIANCE] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

@@ -8,11 +8,13 @@ from typing import Optional
 import calendar
 
 from app.models.async_database import get_async_db
-from app.models.dailypass_models import get_dailypass_session, DailyPass
-from app.fittbot_api.v1.payments.models.payments import Payment
-from app.fittbot_api.v1.payments.models.orders import Order
-from app.models.fittbot_models import SessionBooking, SessionBookingDay
 from app.models.adminmodels import Expenses, OpeningBalance
+
+# Import centralized revenue service
+from app.fittbot_admin_api.revenue_service import (
+    get_revenue_breakdown,
+    paise_to_rupees
+)
 
 
 # Pydantic model for Opening Balance
@@ -67,117 +69,6 @@ def calculate_daily_pass_session_payout(revenue):
     return max(0, int(final_payout)), int(commission), int(pg_deduction), int(tds_deduction)
 
 
-async def get_revenue_for_month(
-    db: AsyncSession,
-    dailypass_session,
-    start_date: date,
-    end_date: date
-):
-    """
-    Calculate revenue breakdown for a specific month using optimized queries.
-    Reuses the same logic as financials module.
-    """
-    # 1. DAILY PASS REVENUE
-    daily_pass_revenue = 0
-    try:
-        daily_pass_stmt = (
-            select(func.coalesce(func.sum(DailyPass.amount_paid), 0))
-            .where(func.date(DailyPass.created_at) >= start_date)
-            .where(func.date(DailyPass.created_at) <= end_date)
-        )
-        daily_pass_result = await db.execute(daily_pass_stmt)
-        daily_pass_revenue = daily_pass_result.scalar() or 0
-    except Exception as e:
-        print(f"[CASH_FLOW] Error fetching Daily Pass: {e}")
-
-    # 2. SESSIONS REVENUE
-    sessions_revenue = 0
-    try:
-        sessions_stmt = (
-            select(func.coalesce(func.sum(SessionBooking.price_paid), 0))
-            .join(SessionBookingDay, SessionBooking.schedule_id == SessionBookingDay.schedule_id)
-            .where(func.date(SessionBookingDay.booking_date) >= start_date)
-            .where(func.date(SessionBookingDay.booking_date) <= end_date)
-        )
-        sessions_result = await db.execute(sessions_stmt)
-        sessions_revenue = sessions_result.scalar() or 0
-    except Exception as e:
-        print(f"[CASH_FLOW] Error fetching Sessions: {e}")
-
-    # 3. FITTBOT SUBSCRIPTION REVENUE
-    fittbot_subscription_revenue = 0
-    try:
-        # Method 1: Payments + Orders join
-        fittbot_stmt_1 = (
-            select(func.coalesce(func.sum(Order.gross_amount_minor), 0))
-            .join(Payment, Payment.order_id == Order.id)
-            .where(Payment.provider == "google_play")
-            .where(Payment.status == "captured")
-            .where(Order.status == "paid")
-            .where(func.date(Payment.captured_at) >= start_date)
-            .where(func.date(Payment.captured_at) <= end_date)
-        )
-        fittbot_result_1 = await db.execute(fittbot_stmt_1)
-        fittbot_subscription_revenue += fittbot_result_1.scalar() or 0
-
-        # Method 2: Orders with provider_order_id like 'sub_%'
-        fittbot_stmt_2 = (
-            select(func.coalesce(func.sum(Order.gross_amount_minor), 0))
-            .where(Order.provider_order_id.like("sub_%"))
-            .where(Order.status == "paid")
-            .where(func.date(Order.created_at) >= start_date)
-            .where(func.date(Order.created_at) <= end_date)
-        )
-        fittbot_result_2 = await db.execute(fittbot_stmt_2)
-        fittbot_subscription_revenue += fittbot_result_2.scalar() or 0
-    except Exception as e:
-        print(f"[CASH_FLOW] Error fetching Fittbot Subscription: {e}")
-
-    # 4. GYM MEMBERSHIP REVENUE
-    gym_membership_revenue = 0
-    try:
-        gym_membership_stmt = (
-            select(Order.gross_amount_minor, Order.order_metadata)
-            .join(Payment, Payment.order_id == Order.id)
-            .where(Payment.status == "captured")
-            .where(Order.status == "paid")
-            .where(func.date(Payment.captured_at) >= start_date)
-            .where(func.date(Payment.captured_at) <= end_date)
-        )
-        gym_membership_result = await db.execute(gym_membership_stmt)
-        all_orders = gym_membership_result.all()
-
-        for order in all_orders:
-            amount = order.gross_amount_minor or 0
-            metadata = order.order_metadata
-
-            if not metadata or not isinstance(metadata, dict):
-                continue
-
-            condition1 = False
-            if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
-                if metadata["audit"].get("source") == "dailypass_checkout_api":
-                    condition1 = True
-
-            condition2 = False
-            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
-                    condition2 = True
-
-            if condition1 or condition2:
-                gym_membership_revenue += amount
-
-    except Exception as e:
-        print(f"[CASH_FLOW] Error fetching Gym Membership: {e}")
-
-    return {
-        "daily_pass": daily_pass_revenue,
-        "sessions": sessions_revenue,
-        "fittbot_subscription": fittbot_subscription_revenue,
-        "gym_membership": gym_membership_revenue
-    }
-
-
 @router.get("/overview")
 async def get_last_month_outflow(
     month: Optional[str] = Query(None, description="Month in YYYY-MM format (e.g., 2025-02). If not provided, returns previous month."),
@@ -193,9 +84,7 @@ async def get_last_month_outflow(
     4. Expenses (operational and marketing expenses from fittbot_admins.expenses)
 
     Note: PG charges and commission are NOT part of outflow as they are
-    retained by the platform (deducted before payout).
-
-    All calculations reuse the financials module logic.
+          retained revenue for the platform.
     """
     try:
         # Determine the month to calculate
@@ -230,19 +119,19 @@ async def get_last_month_outflow(
 
         print(f"[CASH_FLOW] Calculating outflow for {start_date} to {end_date}")
 
-        # Get dailypass session
-        dailypass_session = get_dailypass_session()
+        # Use centralized revenue service instead of get_revenue_for_month
+        revenue_data = await get_revenue_breakdown(
+            db=db,
+            start_date=start_date,
+            end_date=end_date,
+            exclude_gym_id_one=False  # Include all gyms for cash flow
+        )
 
-        # Get revenue breakdown for previous month
-        revenue_data = await get_revenue_for_month(db, dailypass_session, start_date, end_date)
-
-        dailypass_session.close()
-
-        # Extract revenues
-        daily_pass_revenue = revenue_data["daily_pass"]
-        sessions_revenue = revenue_data["sessions"]
-        gym_membership_revenue = revenue_data["gym_membership"]
-        fittbot_subscription_revenue = revenue_data["fittbot_subscription"]
+        # Extract revenues (all in PAISA)
+        daily_pass_revenue = revenue_data.daily_pass
+        sessions_revenue = revenue_data.sessions
+        gym_membership_revenue = revenue_data.gym_membership
+        fittbot_subscription_revenue = revenue_data.fittbot_subscription
 
         # Calculate payouts and deductions for each category (using financials logic)
         # Membership: 15% commission, 2% PG, 2% TDS
@@ -533,9 +422,6 @@ async def get_monthly_cash_flow_data(
         today = date.today()
         offset = (page - 1) * page_size
 
-        # Get dailypass session
-        dailypass_session = get_dailypass_session()
-
         # Fetch opening balances
         ob_stmt = select(OpeningBalance).order_by(OpeningBalance.financial_year.desc())
         ob_result = await db.execute(ob_stmt)
@@ -562,11 +448,12 @@ async def get_monthly_cash_flow_data(
         monthly_data = []
 
         # Generate only the months needed for the current page
+        # Start from previous month to show complete financial years
         for i in range(page_size):
             month_index = offset + i
 
-            # Calculate the month and year
-            month = today.month - month_index
+            # Calculate the month and year starting from previous month
+            month = today.month - 1 - month_index
             year = today.year
             while month <= 0:
                 month += 12
@@ -580,13 +467,19 @@ async def get_monthly_cash_flow_data(
             last_day_of_month = calendar.monthrange(year, month)[1]
             month_end = date(year, month, last_day_of_month)
 
-            # Get revenue data for this month
-            revenue_data = await get_revenue_for_month(db, dailypass_session, month_start, month_end)
+            # Use centralized revenue service instead of get_revenue_for_month
+            revenue_data = await get_revenue_breakdown(
+                db=db,
+                start_date=month_start,
+                end_date=month_end,
+                exclude_gym_id_one=False  # Include all gyms for cash flow
+            )
 
-            daily_pass_revenue = revenue_data["daily_pass"]
-            sessions_revenue = revenue_data["sessions"]
-            gym_membership_revenue = revenue_data["gym_membership"]
-            fittbot_subscription_revenue = revenue_data["fittbot_subscription"]
+            # Extract revenues (all in PAISA)
+            daily_pass_revenue = revenue_data.daily_pass
+            sessions_revenue = revenue_data.sessions
+            gym_membership_revenue = revenue_data.gym_membership
+            fittbot_subscription_revenue = revenue_data.fittbot_subscription
 
             # Calculate payouts and deductions
             membership_payout, membership_comm, membership_pg, membership_tds = calculate_membership_payout(
@@ -671,13 +564,15 @@ async def get_monthly_cash_flow_data(
                 "opening_balance": round(month_opening_balance, 2),
                 "inflow": round(total_inflow_paise / 100, 2),
                 "outflow": round(total_outflow_paise / 100, 2),
+                "gym_payout": round(total_gym_payout / 100, 2),
+                "gst_payable": round(total_gst_payable_paise / 100, 2),
+                "tds_payable": round(total_tds_payable_paise / 100, 2),
+                "expenses": round(total_expenses_paise / 100, 2),
                 "net_cash_flow": round(net_cash_flow_paise / 100, 2),
                 "closing_balance": round(closing_balance_rupees, 2),
                 "burn_rate": round(burn_rate_rupees, 2),
                 "runway": round(runway, 1)
             })
-
-        dailypass_session.close()
 
         # Calculate total months
         start_year = 2020
@@ -695,6 +590,9 @@ async def get_monthly_cash_flow_data(
             for ob in opening_balances
         ]
 
+        # Reverse to show April -> March order within each financial year
+        monthly_data.reverse()
+
         return {
             "success": True,
             "data": monthly_data,
@@ -709,6 +607,169 @@ async def get_monthly_cash_flow_data(
             }
         }
 
+    except Exception as e:
+        print(f"[CASH_FLOW] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/export")
+async def export_cash_flow_data(
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Export cash flow data for a date range.
+    Returns monthly data including opening balance, outflow breakdown, net cash flow, closing balance, burn rate, and runway.
+    """
+    try:
+        # Parse dates
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+        if start > end:
+            raise HTTPException(status_code=400, detail="Start date cannot be after end date")
+
+        # Fetch opening balances
+        ob_stmt = select(OpeningBalance).order_by(OpeningBalance.financial_year.desc())
+        ob_result = await db.execute(ob_stmt)
+        opening_balances = ob_result.scalars().all()
+
+        # Create opening balance lookup by financial year
+        opening_balance_dict = {ob.financial_year: ob.amount for ob in opening_balances}
+
+        monthly_data = []
+
+        # Generate all months in the date range
+        current = start
+        while current <= end:
+            # Get month start and end
+            month_start = date(current.year, current.month, 1)
+            last_day_of_month = calendar.monthrange(current.year, current.month)[1]
+            month_end = date(current.year, current.month, min(last_day_of_month, end.day))
+
+            # Use centralized revenue service
+            revenue_data = await get_revenue_breakdown(
+                db=db,
+                start_date=month_start,
+                end_date=month_end,
+                exclude_gym_id_one=False
+            )
+
+            # Extract revenues (all in PAISA)
+            daily_pass_revenue = revenue_data.daily_pass
+            sessions_revenue = revenue_data.sessions
+            gym_membership_revenue = revenue_data.gym_membership
+            fittbot_subscription_revenue = revenue_data.fittbot_subscription
+
+            # Calculate payouts and deductions
+            membership_payout, membership_comm, membership_pg, membership_tds = calculate_membership_payout(
+                gym_membership_revenue
+            )
+            daily_pass_payout, daily_pass_comm, daily_pass_pg, daily_pass_tds = calculate_daily_pass_session_payout(
+                daily_pass_revenue
+            )
+            sessions_payout, sessions_comm, sessions_pg, sessions_tds = calculate_daily_pass_session_payout(
+                sessions_revenue
+            )
+
+            # Calculate totals
+            total_gym_payout = membership_payout + daily_pass_payout + sessions_payout
+
+            # GST Payable
+            gst_on_subscription_paise = int(Decimal(str(fittbot_subscription_revenue)) * Decimal("0.18"))
+            gst_on_commission_paise = (
+                int(Decimal(str(membership_comm)) * Decimal("0.18")) +
+                int(Decimal(str(daily_pass_comm)) * Decimal("0.18")) +
+                int(Decimal(str(sessions_comm)) * Decimal("0.18"))
+            )
+            total_gst_payable_paise = gst_on_subscription_paise + gst_on_commission_paise
+
+            # TDS Payable
+            total_tds_payable_paise = membership_tds + daily_pass_tds + sessions_tds
+
+            # Expenses
+            total_expenses_rupees = 0.0
+            try:
+                expenses_stmt = (
+                    select(func.coalesce(func.sum(Expenses.amount), 0))
+                    .where(Expenses.expense_date >= month_start)
+                    .where(Expenses.expense_date <= month_end)
+                )
+                expenses_result = await db.execute(expenses_stmt)
+                total_expenses_rupees = expenses_result.scalar() or 0.0
+            except Exception as e:
+                print(f"[CASH_FLOW] Error fetching Expenses: {e}")
+
+            total_expenses_paise = int(total_expenses_rupees * 100)
+
+            # Calculate inflow, outflow, and net cash flow (in rupees)
+            total_inflow_paise = daily_pass_revenue + sessions_revenue + gym_membership_revenue + fittbot_subscription_revenue
+            total_outflow_paise = total_gym_payout + total_gst_payable_paise + total_tds_payable_paise + total_expenses_paise
+            net_cash_flow_paise = total_inflow_paise - total_outflow_paise
+
+            # Calculate opening balance for this month
+            month = current.month
+            year = current.year
+            if month >= 4:
+                month_fy = f"{year}-{year + 1}"
+            else:
+                month_fy = f"{year - 1}-{year}"
+
+            month_opening_balance = opening_balance_dict.get(month_fy, 0)
+
+            # Calculate closing balance (Opening Balance + Net Cash Flow)
+            closing_balance_paise = int(month_opening_balance * 100) + net_cash_flow_paise
+
+            # Calculate burn rate (absolute value of negative cash flow)
+            burn_rate_paise = abs(net_cash_flow_paise) if net_cash_flow_paise < 0 else 0
+
+            # Calculate runway
+            closing_balance_rupees = closing_balance_paise / 100
+            burn_rate_rupees = burn_rate_paise / 100
+
+            if closing_balance_paise > 0 and net_cash_flow_paise < 0:
+                runway = closing_balance_rupees / burn_rate_rupees
+            else:
+                runway = 0
+
+            month_name = month_start.strftime("%B %Y")
+
+            monthly_data.append({
+                "month": month_start.strftime("%Y-%m"),
+                "month_display": month_name,
+                "financial_year": month_fy,
+                "opening_balance": round(month_opening_balance, 2),
+                "outflow": round(total_outflow_paise / 100, 2),
+                "gym_payout": round(total_gym_payout / 100, 2),
+                "gst_payable": round(total_gst_payable_paise / 100, 2),
+                "tds_payable": round(total_tds_payable_paise / 100, 2),
+                "expenses": round(total_expenses_paise / 100, 2),
+                "net_cash_flow": round(net_cash_flow_paise / 100, 2),
+                "closing_balance": round(closing_balance_rupees, 2),
+                "burn_rate": round(burn_rate_rupees, 2),
+                "runway": round(runway, 1)
+            })
+
+            # Move to next month
+            # Add one month to current date
+            if current.month == 12:
+                current = date(current.year + 1, 1, 1)
+            else:
+                current = date(current.year, current.month + 1, 1)
+
+        # Reverse to match pagination display order (April -> March within each FY)
+        monthly_data.reverse()
+
+        return {
+            "success": True,
+            "data": monthly_data
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
     except Exception as e:
         print(f"[CASH_FLOW] Error: {str(e)}")
         import traceback

@@ -167,6 +167,7 @@ async def get_gym_stats(
     has_daily_pass: Optional[bool] = Query(None, description="Filter by daily pass pricing existence"),
     price_sort: Optional[str] = Query(None, description="Sort by session price"),
     registered_users_filter: Optional[str] = Query(None, description="Filter by registered users count (e.g., '50', '100', '150')"),
+    city: Optional[str] = Query(None, description="Filter by city"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -269,6 +270,10 @@ async def get_gym_stats(
                 )
             except (ValueError, TypeError):
                 pass  # Invalid filter, ignore it
+
+        # Apply city filter (case-insensitive to handle normalized city names from frontend)
+        if city:
+            base_stmt = base_stmt.where(func.lower(Gym.city) == city.lower())
 
         # Apply sorting
         if sort_order == "asc":
@@ -379,6 +384,31 @@ async def get_gym_stats_summary(db: AsyncSession = Depends(get_async_db)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching gym summary: {str(e)}")
+
+@router.get("/cities")
+async def get_gym_cities(db: AsyncSession = Depends(get_async_db)):
+    """Get list of unique cities from gyms"""
+    try:
+        result = await db.execute(
+            select(Gym.city)
+            .where(Gym.city.isnot(None))
+            .where(Gym.city != "")
+            .where(Gym.city != "-")
+            .where(Gym.city != "N/A")
+            .distinct()
+            .order_by(Gym.city)
+        )
+        cities = [row[0] for row in result.all()]
+
+        return {
+            "success": True,
+            "data": {
+                "cities": cities
+            },
+            "message": "Cities fetched successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching cities: {str(e)}")
 
 @router.get("/unverified")
 async def get_unverified_gyms(

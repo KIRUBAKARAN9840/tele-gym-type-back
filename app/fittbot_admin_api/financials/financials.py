@@ -1,19 +1,33 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timedelta
-from sqlalchemy import func, and_, select, distinct, or_
+from datetime import datetime, timedelta, date
+from sqlalchemy import func, and_, select, distinct
+from decimal import Decimal
+
 from app.models.async_database import get_async_db
+<<<<<<< HEAD
 from app.models.dailypass_models import get_dailypass_session, DailyPass
 from app.models.fittbot_models import (
     SessionBookingDay, SessionBooking, Gym, ActiveUser, FittbotGymMembership
 )
+=======
+from app.models.fittbot_models import ActiveUser, Client
+>>>>>>> new-feature
 from app.fittbot_api.v1.payments.models.payments import Payment
 from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
 from app.models.adminmodels import Expenses
 
+# Import centralized revenue service
+from app.fittbot_admin_api.revenue_service import (
+    get_revenue_breakdown,
+    paise_to_rupees,
+    paise_to_rupees_float
+)
+
 router = APIRouter(prefix="/api/admin/financials", tags=["AdminFinancials"])
 
 
+<<<<<<< HEAD
 async def get_revenue_breakdown_optimized(db: AsyncSession, dailypass_session, start_date, end_date):
     """
     Calculate revenue breakdown using optimized bulk queries.
@@ -113,6 +127,8 @@ async def get_revenue_breakdown_optimized(db: AsyncSession, dailypass_session, s
     }
 
 
+=======
+>>>>>>> new-feature
 def calculate_membership_payout(membership_revenue):
     """
     Calculate gym payout for membership revenue.
@@ -121,12 +137,9 @@ def calculate_membership_payout(membership_revenue):
     2. 2% PG deduction on M_total
     3. 2% TDS on amount after commission
     """
-    from decimal import Decimal
-
     if membership_revenue <= 0:
         return 0, 0, 0, 0
 
-    # Convert to Decimal if not already
     membership_revenue = Decimal(str(membership_revenue))
 
     commission = membership_revenue * Decimal("0.15")  # 15% commission
@@ -146,12 +159,9 @@ def calculate_daily_pass_session_payout(revenue):
     2. 2% PG deduction on total
     3. 2% TDS on amount after commission
     """
-    from decimal import Decimal
-
     if revenue <= 0:
         return 0, 0, 0, 0
 
-    # Convert to Decimal if not already
     revenue = Decimal(str(revenue))
 
     commission = revenue * Decimal("0.30")  # 30% commission
@@ -178,7 +188,6 @@ async def get_total_expenses(
             Expenses.expense_date <= end_date
         ]
 
-        # Single aggregated query for total expenses
         total_query = select(func.coalesce(func.sum(Expenses.amount), 0))
         if conditions:
             total_query = total_query.where(and_(*conditions))
@@ -197,22 +206,18 @@ async def get_active_users_count(
     start_date,
     end_date
 ):
-
     try:
-        # Use the filter date range (start_date to end_date)
-        # Only count users with 2+ distinct dates in the selected range
-        subquery = select(ActiveUser.client_id).where(
+        # Active users: users with at least 1 login in the date range
+        subquery = select(ActiveUser.client_id).join(
+            Client, ActiveUser.client_id == Client.client_id
+        ).where(
             and_(
                 func.date(ActiveUser.created_at) >= start_date,
-                func.date(ActiveUser.created_at) <= end_date
+                func.date(ActiveUser.created_at) <= end_date,
+                Client.gym_id != 1
             )
-        ).group_by(
-            ActiveUser.client_id
-        ).having(
-            func.count(func.distinct(func.date(ActiveUser.created_at))) >= 2
         )
 
-        # Count distinct client_ids that qualify (each qualifying client = 1)
         count_query = select(func.coalesce(func.count(distinct(ActiveUser.client_id)), 0)).where(
             ActiveUser.client_id.in_(subquery)
         )
@@ -233,24 +238,37 @@ async def get_paying_users_count(
     start_date,
     end_date
 ):
-   
     try:
         conditions = [
             func.date(Payment.created_at) >= start_date,
             func.date(Payment.created_at) <= end_date
         ]
 
-        # Single aggregated query for distinct customer count
-        count_query = select(func.count(func.distinct(Payment.customer_id)))
-        if conditions:
-            count_query = count_query.where(and_(*conditions))
+        paying_users_subquery = select(Payment.customer_id).join(
+            Order, Order.id == Payment.order_id
+        ).join(
+            OrderItem, OrderItem.order_id == Order.id
+        ).where(
+            and_(
+                OrderItem.gym_id.isnot(None),
+                OrderItem.gym_id != "1"
+            )
+        )
 
+        for condition in conditions:
+            paying_users_subquery = paying_users_subquery.where(condition)
+
+        paying_users_subquery = paying_users_subquery.distinct().alias("paying_users")
+
+        count_query = select(func.count()).select_from(paying_users_subquery)
         count_result = await db.execute(count_query)
         paying_users_count = count_result.scalar() or 0
 
         return int(paying_users_count)
     except Exception as e:
         print(f"[FINANCIALS] Error fetching paying users: {e}")
+        import traceback
+        traceback.print_exc()
         return 0
 
 
@@ -276,10 +294,8 @@ def calculate_net_revenue(
         - Individual net revenue for each category
         - Total net revenue
     """
-    from decimal import Decimal
     GST_RATE = Decimal("0.18")  # 18% GST as Decimal
 
-    # Convert all inputs to Decimal for consistent arithmetic
     fittbot_subscription_revenue = Decimal(str(fittbot_subscription_revenue))
     gym_membership_revenue = Decimal(str(gym_membership_revenue))
     daily_pass_revenue = Decimal(str(daily_pass_revenue))
@@ -289,26 +305,21 @@ def calculate_net_revenue(
     sessions_comm = Decimal(str(sessions_comm))
 
     # 1. Fymble Subscription Net Revenue
-    # Net = Total Revenue - 18% GST on total
     fittbot_subscription_gst = fittbot_subscription_revenue * GST_RATE
     fittbot_subscription_net = fittbot_subscription_revenue - fittbot_subscription_gst
 
     # 2. Gym Membership Net Revenue
-    # Net = Total Revenue - 18% GST on platform commission only
     gym_membership_gst_on_comm = membership_comm * GST_RATE
     gym_membership_net = gym_membership_revenue - gym_membership_gst_on_comm
 
     # 3. Daily Pass Net Revenue
-    # Net = Total Revenue - 18% GST on platform commission only
     daily_pass_gst_on_comm = daily_pass_comm * GST_RATE
     daily_pass_net = daily_pass_revenue - daily_pass_gst_on_comm
 
     # 4. Session Net Revenue
-    # Net = Total Revenue - 18% GST on platform commission only
     sessions_gst_on_comm = sessions_comm * GST_RATE
     sessions_net = sessions_revenue - sessions_gst_on_comm
 
-    # Total Net Revenue
     total_net_revenue = (
         fittbot_subscription_net +
         gym_membership_net +
@@ -360,33 +371,30 @@ async def get_financials_overview(
         if start_date:
             start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
         else:
-            # Default to last 30 days
-            start_date_obj = datetime.now().date() - timedelta(days=30)
+            start_date_obj = datetime(2020, 1, 1).date()
 
         if end_date:
             end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
         else:
-            # Default to today
             end_date_obj = datetime.now().date()
 
         print(f"[FINANCIALS] Fetching from {start_date_obj} to {end_date_obj}")
 
-        # Get dailypass session
-        dailypass_session = get_dailypass_session()
+        # Use centralized revenue service
+        revenue_data = await get_revenue_breakdown(
+            db=db,
+            start_date=start_date_obj,
+            end_date=end_date_obj,
+            exclude_gym_id_one=True
+        )
 
-        # Get revenue breakdown using optimized queries
-        revenue_data = await get_revenue_breakdown_optimized(db, dailypass_session, start_date_obj, end_date_obj)
+        # Extract individual source revenues (all in PAISA)
+        daily_pass_revenue = revenue_data.daily_pass
+        sessions_revenue = revenue_data.sessions
+        gym_membership_revenue = revenue_data.gym_membership
+        fittbot_subscription_revenue = revenue_data.fittbot_subscription
 
-        dailypass_session.close()
-
-        # Extract individual source revenues
-        daily_pass_revenue = revenue_data["daily_pass"]
-        sessions_revenue = revenue_data["sessions"]
-        gym_membership_revenue = revenue_data["gym_membership"]
-        fittbot_subscription_revenue = revenue_data["fittbot_subscription"]
-
-        # Calculate Total Revenue (all sources)
-        total_revenue = revenue_data["total_revenue"]
+        total_revenue = revenue_data.total_revenue
 
         # Calculate Actual Gym Payout (excluding Fymble Subscription)
         membership_payout, membership_comm, membership_pg, membership_tds = calculate_membership_payout(gym_membership_revenue)
@@ -412,145 +420,131 @@ async def get_financials_overview(
             sessions_comm=sessions_comm
         )
 
-        # Fymble Subscription: Same as net revenue (already calculated)
+        # Calculate Gross Profit
         fittbot_subscription_gross_profit = net_revenue_data["fittbot_subscription"]["net_revenue"]
-
-        # Gym Membership: Commission - 18% GST on commission (already calculated as gst_on_comm)
         gym_membership_gross_profit = membership_comm - net_revenue_data["gym_membership"]["gst_on_comm"]
-
-        # Daily Pass: Commission - 18% GST on commission (already calculated as gst_on_comm)
         daily_pass_gross_profit = daily_pass_comm - net_revenue_data["daily_pass"]["gst_on_comm"]
-
-        # Sessions: Commission - 18% GST on commission (already calculated as gst_on_comm)
         sessions_gross_profit = sessions_comm - net_revenue_data["sessions"]["gst_on_comm"]
 
-        # Total Gross Profit
         total_gross_profit = fittbot_subscription_gross_profit + gym_membership_gross_profit + daily_pass_gross_profit + sessions_gross_profit
 
-        # Get Total Expenses from fittbot_admins.expenses table
+        # Get Total Expenses
         total_expenses = await get_total_expenses(db, start_date_obj, end_date_obj)
 
-        # Get Active Users count from fittbot_local.active_users table
+        # Get Active Users and Paying Users counts
         active_users_count = await get_active_users_count(db, start_date_obj, end_date_obj)
-
-        # Get Paying Users count from payments.payments table
         paying_users_count = await get_paying_users_count(db, start_date_obj, end_date_obj)
 
-        gross_profit_rupees = total_gross_profit / 100
+        gross_profit_rupees = paise_to_rupees(total_gross_profit)
         ebita = gross_profit_rupees - total_expenses
 
-        net_revenue_rupees = net_revenue_data["total_net_revenue"] / 100
+        net_revenue_rupees = paise_to_rupees(net_revenue_data["total_net_revenue"])
         arpu = net_revenue_rupees / active_users_count if active_users_count > 0 else 0
-
-        # Calculate ARPPU (Average Revenue Per Paying User)
         arppu = net_revenue_rupees / paying_users_count if paying_users_count > 0 else 0
-
-        # Revenue source breakdown in rupees (with proper decimal precision)
-        revenue_source_breakdown = {
-            "daily_pass": round(daily_pass_revenue / 100, 2),
-            "sessions": round(sessions_revenue / 100, 2),
-            "fittbot_subscription": round(fittbot_subscription_revenue / 100, 2),
-            "gym_membership": round(gym_membership_revenue / 100, 2),
-            "total": round(total_revenue / 100, 2)
-        }
 
         return {
             "success": True,
             "data": {
-                "totalRevenue": round(total_revenue / 100, 2),  # Convert to rupees with 2 decimals
-                "actualGymPayout": round(actual_gym_payout / 100, 2),  # Convert to rupees with 2 decimals
-                "netRevenue": round(net_revenue_data["total_net_revenue"] / 100, 2),  # Total Net Revenue
-                "revenueSourceBreakdown": revenue_source_breakdown,
+                "totalRevenue": paise_to_rupees(total_revenue),
+                "actualGymPayout": paise_to_rupees(actual_gym_payout),
+                "netRevenue": paise_to_rupees(net_revenue_data["total_net_revenue"]),
+                "revenueSourceBreakdown": {
+                    "daily_pass": paise_to_rupees(daily_pass_revenue),
+                    "sessions": paise_to_rupees(sessions_revenue),
+                    "fittbot_subscription": paise_to_rupees(fittbot_subscription_revenue),
+                    "gym_membership": paise_to_rupees(gym_membership_revenue),
+                    "total": paise_to_rupees(total_revenue)
+                },
                 "payoutBreakdown": {
                     "membership": {
-                        "revenue": round(gym_membership_revenue / 100, 2),
-                        "payout": round(membership_payout / 100, 2),
+                        "revenue": paise_to_rupees(gym_membership_revenue),
+                        "payout": paise_to_rupees(membership_payout),
                         "deductions": {
-                            "commission": round(membership_comm / 100, 2),
-                            "pg_deduction": round(membership_pg / 100, 2),
-                            "tds_deduction": round(membership_tds / 100, 2)
+                            "commission": paise_to_rupees(membership_comm),
+                            "pg_deduction": paise_to_rupees(membership_pg),
+                            "tds_deduction": paise_to_rupees(membership_tds)
                         }
                     },
                     "daily_pass": {
-                        "revenue": round(daily_pass_revenue / 100, 2),
-                        "payout": round(daily_pass_payout / 100, 2),
+                        "revenue": paise_to_rupees(daily_pass_revenue),
+                        "payout": paise_to_rupees(daily_pass_payout),
                         "deductions": {
-                            "commission": round(daily_pass_comm / 100, 2),
-                            "pg_deduction": round(daily_pass_pg / 100, 2),
-                            "tds_deduction": round(daily_pass_tds / 100, 2)
+                            "commission": paise_to_rupees(daily_pass_comm),
+                            "pg_deduction": paise_to_rupees(daily_pass_pg),
+                            "tds_deduction": paise_to_rupees(daily_pass_tds)
                         }
                     },
                     "sessions": {
-                        "revenue": round(sessions_revenue / 100, 2),
-                        "payout": round(sessions_payout / 100, 2),
+                        "revenue": paise_to_rupees(sessions_revenue),
+                        "payout": paise_to_rupees(sessions_payout),
                         "deductions": {
-                            "commission": round(sessions_comm / 100, 2),
-                            "pg_deduction": round(sessions_pg / 100, 2),
-                            "tds_deduction": round(sessions_tds / 100, 2)
+                            "commission": paise_to_rupees(sessions_comm),
+                            "pg_deduction": paise_to_rupees(sessions_pg),
+                            "tds_deduction": paise_to_rupees(sessions_tds)
                         }
                     }
                 },
                 "totalDeductions": {
-                    "commission": round(total_commission / 100, 2),
-                    "pg_deduction": round(total_pg / 100, 2),
-                    "tds_deduction": round(total_tds / 100, 2),
-                    "total": round(total_deductions / 100, 2)
+                    "commission": paise_to_rupees(total_commission),
+                    "pg_deduction": paise_to_rupees(total_pg),
+                    "tds_deduction": paise_to_rupees(total_tds),
+                    "total": paise_to_rupees(total_deductions)
                 },
                 "netRevenueBreakdown": {
                     "fittbot_subscription": {
-                        "revenue": round(net_revenue_data["fittbot_subscription"]["revenue"] / 100, 2),
-                        "gst": round(net_revenue_data["fittbot_subscription"]["gst"] / 100, 2),
-                        "net_revenue": round(net_revenue_data["fittbot_subscription"]["net_revenue"] / 100, 2)
+                        "revenue": paise_to_rupees(net_revenue_data["fittbot_subscription"]["revenue"]),
+                        "gst": paise_to_rupees(net_revenue_data["fittbot_subscription"]["gst"]),
+                        "net_revenue": paise_to_rupees(net_revenue_data["fittbot_subscription"]["net_revenue"])
                     },
                     "gym_membership": {
-                        "revenue": round(net_revenue_data["gym_membership"]["revenue"] / 100, 2),
-                        "commission": round(net_revenue_data["gym_membership"]["commission"] / 100, 2),
-                        "gst_on_comm": round(net_revenue_data["gym_membership"]["gst_on_comm"] / 100, 2),
-                        "net_revenue": round(net_revenue_data["gym_membership"]["net_revenue"] / 100, 2)
+                        "revenue": paise_to_rupees(net_revenue_data["gym_membership"]["revenue"]),
+                        "commission": paise_to_rupees(net_revenue_data["gym_membership"]["commission"]),
+                        "gst_on_comm": paise_to_rupees(net_revenue_data["gym_membership"]["gst_on_comm"]),
+                        "net_revenue": paise_to_rupees(net_revenue_data["gym_membership"]["net_revenue"])
                     },
                     "daily_pass": {
-                        "revenue": round(net_revenue_data["daily_pass"]["revenue"] / 100, 2),
-                        "commission": round(net_revenue_data["daily_pass"]["commission"] / 100, 2),
-                        "gst_on_comm": round(net_revenue_data["daily_pass"]["gst_on_comm"] / 100, 2),
-                        "net_revenue": round(net_revenue_data["daily_pass"]["net_revenue"] / 100, 2)
+                        "revenue": paise_to_rupees(net_revenue_data["daily_pass"]["revenue"]),
+                        "commission": paise_to_rupees(net_revenue_data["daily_pass"]["commission"]),
+                        "gst_on_comm": paise_to_rupees(net_revenue_data["daily_pass"]["gst_on_comm"]),
+                        "net_revenue": paise_to_rupees(net_revenue_data["daily_pass"]["net_revenue"])
                     },
                     "sessions": {
-                        "revenue": round(net_revenue_data["sessions"]["revenue"] / 100, 2),
-                        "commission": round(net_revenue_data["sessions"]["commission"] / 100, 2),
-                        "gst_on_comm": round(net_revenue_data["sessions"]["gst_on_comm"] / 100, 2),
-                        "net_revenue": round(net_revenue_data["sessions"]["net_revenue"] / 100, 2)
+                        "revenue": paise_to_rupees(net_revenue_data["sessions"]["revenue"]),
+                        "commission": paise_to_rupees(net_revenue_data["sessions"]["commission"]),
+                        "gst_on_comm": paise_to_rupees(net_revenue_data["sessions"]["gst_on_comm"]),
+                        "net_revenue": paise_to_rupees(net_revenue_data["sessions"]["net_revenue"])
                     },
-                    "total_net_revenue": round(net_revenue_data["total_net_revenue"] / 100, 2)
+                    "total_net_revenue": paise_to_rupees(net_revenue_data["total_net_revenue"])
                 },
                 "grossProfitBreakdown": {
                     "fittbot_subscription": {
-                        "revenue": round(net_revenue_data["fittbot_subscription"]["revenue"] / 100, 2),
-                        "gst": round(net_revenue_data["fittbot_subscription"]["gst"] / 100, 2),
-                        "gross_profit": round(fittbot_subscription_gross_profit / 100, 2)
+                        "revenue": paise_to_rupees(net_revenue_data["fittbot_subscription"]["revenue"]),
+                        "gst": paise_to_rupees(net_revenue_data["fittbot_subscription"]["gst"]),
+                        "gross_profit": paise_to_rupees(fittbot_subscription_gross_profit)
                     },
                     "gym_membership": {
-                        "revenue": round(net_revenue_data["gym_membership"]["revenue"] / 100, 2),
-                        "commission": round(net_revenue_data["gym_membership"]["commission"] / 100, 2),
-                        "gst_on_comm": round(net_revenue_data["gym_membership"]["gst_on_comm"] / 100, 2),
-                        "gross_profit": round(gym_membership_gross_profit / 100, 2)
+                        "revenue": paise_to_rupees(net_revenue_data["gym_membership"]["revenue"]),
+                        "commission": paise_to_rupees(net_revenue_data["gym_membership"]["commission"]),
+                        "gst_on_comm": paise_to_rupees(net_revenue_data["gym_membership"]["gst_on_comm"]),
+                        "gross_profit": paise_to_rupees(gym_membership_gross_profit)
                     },
                     "daily_pass": {
-                        "revenue": round(net_revenue_data["daily_pass"]["revenue"] / 100, 2),
-                        "commission": round(net_revenue_data["daily_pass"]["commission"] / 100, 2),
-                        "gst_on_comm": round(net_revenue_data["daily_pass"]["gst_on_comm"] / 100, 2),
-                        "gross_profit": round(daily_pass_gross_profit / 100, 2)
+                        "revenue": paise_to_rupees(net_revenue_data["daily_pass"]["revenue"]),
+                        "commission": paise_to_rupees(net_revenue_data["daily_pass"]["commission"]),
+                        "gst_on_comm": paise_to_rupees(net_revenue_data["daily_pass"]["gst_on_comm"]),
+                        "gross_profit": paise_to_rupees(daily_pass_gross_profit)
                     },
                     "sessions": {
-                        "revenue": round(net_revenue_data["sessions"]["revenue"] / 100, 2),
-                        "commission": round(net_revenue_data["sessions"]["commission"] / 100, 2),
-                        "gst_on_comm": round(net_revenue_data["sessions"]["gst_on_comm"] / 100, 2),
-                        "gross_profit": round(sessions_gross_profit / 100, 2)
+                        "revenue": paise_to_rupees(net_revenue_data["sessions"]["revenue"]),
+                        "commission": paise_to_rupees(net_revenue_data["sessions"]["commission"]),
+                        "gst_on_comm": paise_to_rupees(net_revenue_data["sessions"]["gst_on_comm"]),
+                        "gross_profit": paise_to_rupees(sessions_gross_profit)
                     },
-                    "total_gross_profit": round(total_gross_profit / 100, 2)
+                    "total_gross_profit": paise_to_rupees(total_gross_profit)
                 },
-                "grossProfit": round(total_gross_profit / 100, 2),
+                "grossProfit": paise_to_rupees(total_gross_profit),
                 "ebita": {
-                    "gross_profit": round(total_gross_profit / 100, 2),
+                    "gross_profit": paise_to_rupees(total_gross_profit),
                     "total_expenses": round(total_expenses, 2),
                     "ebita": round(ebita, 2)
                 },
@@ -569,7 +563,7 @@ async def get_financials_overview(
                     "endDate": end_date_obj.isoformat()
                 }
             },
-            
+
         }
 
     except ValueError as e:

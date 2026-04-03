@@ -39,7 +39,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         admin_auth_paths=["/api/admin/auth/login", "/api/admin/auth/2fa/verify", "/api/admin/auth/otp-verification", "/api/admin/auth/resend-otp",
             "/api/admin/auth/logout", "/api/admin/auth/refresh-cookie", "/api/admin/auth/verify",
             "/api/admin/auth/profile", "/api/admin/auth/test-cookies","/api/admin/auth/send_otp","/api/admin/auth/change_password","/api/admin/auth/verify_otp",
-            "/api/admin/auth/permissions", "/api/admin/auth/support-team", "/api/admin/auth/token-status"]
+            "/api/admin/auth/permissions", "/api/admin/auth/support-team", "/api/admin/auth/token-status",
+            "/api/admin/auth/totp/setup", "/api/admin/auth/totp/verify", "/api/admin/auth/totp/enable",
+            "/api/admin/auth/totp/disable", "/api/admin/auth/totp/status"]
 
         telecaller_auth_paths = [
             "/telecaller/manager/send-otp",

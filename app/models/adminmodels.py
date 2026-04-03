@@ -30,6 +30,11 @@ class Employees(Base):
     access = Column(Boolean, default=True)
     expo_token = Column(MutableList.as_mutable(JSON))
     refresh_token = Column(String(255))
+    # TOTP (Google Authenticator) fields
+    totp_secret = Column(String(255), nullable=True)
+    totp_enabled = Column(Boolean, default=False)
+    backup_codes = Column(Text, nullable=True)
+    totp_verified_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -50,6 +55,11 @@ class Admins(Base):
     contact_number = Column(String(15), unique=True, nullable=False)
     profile = Column(String(255))
     refresh_token=Column(String(255))
+    # TOTP (Google Authenticator) fields
+    totp_secret = Column(String(255), nullable=True)
+    totp_enabled = Column(Boolean, default=False)
+    backup_codes = Column(Text, nullable=True)
+    totp_verified_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.now())
     updated_at = Column(DateTime, default=datetime.now(), onupdate=datetime.now())
 

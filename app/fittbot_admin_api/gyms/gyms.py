@@ -78,6 +78,25 @@ async def get_gyms_data(
         active_result = await db.execute(active_gyms_query)
         active_count = active_result.scalar() or 0
 
+        # Query 3.5: Total revenue from all active gyms (paid orders only)
+        total_revenue_query = select(
+            func.coalesce(func.sum(Order.gross_amount_minor), 0)
+        ).select_from(
+            Gym
+        ).join(
+            OrderItem, OrderItem.gym_id == func.cast(Gym.gym_id, String(100))
+        ).join(
+            Order, Order.id == OrderItem.order_id
+        ).where(
+            and_(
+                valid_types_condition,
+                Order.status == "paid"
+            )
+        )
+        total_revenue_result = await db.execute(total_revenue_query)
+        total_revenue_minor = total_revenue_result.scalar() or 0
+        total_revenue = float(total_revenue_minor) / 100.0  # Convert to rupees
+
         # Query 4: Gyms per city - Database-level aggregation with normalization
         # Normalize city: trim, proper case, group and count in single query
         normalized_city = func.coalesce(
@@ -145,6 +164,7 @@ async def get_gyms_data(
             "data": {
                 "total_gyms": int(total_count),
                 "active_gyms": int(active_count),
+                "total_revenue": round(total_revenue, 2),
                 "breakdown": {
                     "green": int(breakdown_row.green or 0),
                     "red": int(breakdown_row.red or 0),

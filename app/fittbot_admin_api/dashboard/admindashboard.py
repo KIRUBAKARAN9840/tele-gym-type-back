@@ -6,10 +6,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 from sqlalchemy import func, and_, select, distinct, or_, text, String, desc
 from sqlalchemy.sql.expression import literal
+
+# Import centralized revenue service for consistency
+from app.fittbot_admin_api.revenue_service import (
+    get_revenue_breakdown,
+    get_detailed_revenue_with_breakdowns,
+    paise_to_rupees
+)
+
 from app.models.fittbot_models import (
     Client, Gym, ClientToken, OwnerToken, GymOwner, RewardInterest, RewardProgramOptIn,
     SessionSetting, GymPlans, GymStudiosPic, GymOnboardingPics,
-    SessionBookingDay, SessionBooking, ClassSession, ClientFittbotAccess, ActiveUser
+    SessionBookingDay, SessionBooking, ClassSession, ClientFittbotAccess, ActiveUser, SessionPurchase
 )
 from app.models.adminmodels import(SupportTicketAssignment,Admins)
 from app.models.async_database import get_async_db
@@ -75,7 +83,7 @@ async def get_total_paying_users(db: AsyncSession) -> int:
         return 0
 
 async def get_fittbot_metrics(db: AsyncSession, filter_type='month'):
- 
+
     today = datetime.now().date()
 
     # Total users based on filter
@@ -84,6 +92,13 @@ async def get_fittbot_metrics(db: AsyncSession, filter_type='month'):
     )
     result = await db.execute(stmt)
     total_users_today = result.scalar() or 0
+
+    # Yesterday users
+    stmt = select(func.count()).select_from(Client).filter(
+        func.date(Client.created_at) == today - timedelta(days=1)
+    )
+    result = await db.execute(stmt)
+    total_users_yesterday = result.scalar() or 0
 
     stmt = select(func.count()).select_from(Client).filter(
         Client.created_at >= today - timedelta(days=7),
@@ -121,6 +136,7 @@ async def get_fittbot_metrics(db: AsyncSession, filter_type='month'):
     return {
         "totalUsers": {
             "today": total_users_today,
+            "yesterday": total_users_yesterday,
             "week": total_users_week,
             "month": total_users_month,
             "overall": total_users_overall
@@ -153,152 +169,14 @@ async def get_fittbot_metrics_custom(db: AsyncSession, start_date: str, end_date
     result = await db.execute(stmt)
     total_users_custom = result.scalar() or 0
 
-    # Revenue in custom range - using the same 4-source aggregation
-    total_revenue = 0
-
-    # 1. DAILY PASS REVENUE
-    try:
-        dailypass_session = get_dailypass_session()
-        daily_pass_query = dailypass_session.query(DailyPass).filter(
-            func.date(DailyPass.created_at) >= start_date_obj,
-            func.date(DailyPass.created_at) <= end_date_obj
-        )
-        daily_passes = daily_pass_query.all()
-        for dp in daily_passes:
-            total_revenue += dp.amount_paid or 0
-        dailypass_session.close()
-    except Exception as e:
-        pass
-
-    # 2. SESSIONS REVENUE
-    try:
-        session_stmt = (
-            select(SessionBookingDay, SessionBooking)
-            .join(SessionBooking, SessionBooking.schedule_id == SessionBookingDay.schedule_id, isouter=True)
-            .where(func.date(SessionBookingDay.booking_date) >= start_date_obj)
-            .where(func.date(SessionBookingDay.booking_date) <= end_date_obj)
-        )
-        session_result = await db.execute(session_stmt)
-        sessions = session_result.all()
-        for row in sessions:
-            booking_info = row.SessionBooking
-            if booking_info and booking_info.price_paid:
-                total_revenue += booking_info.price_paid
-    except Exception as e:
-        pass
-
-    # 3. FITTBOT SUBSCRIPTION REVENUE
-    # Using same logic as revenue-analytics API
-    try:
-        # FIRST CONDITION: Orders table -> Payments table
-        # Step 1: Query orders table with filters
-        # - status = 'paid'
-        # - provider_order_id starts with 'sub_'
-        order_stmt = (
-            select(Order.id)
-            .where(Order.provider_order_id.like("sub_%"))
-            .where(Order.status == "paid")
-        )
-        order_result = await db.execute(order_stmt)
-        orders = order_result.all()
-
-        # Step 2: Get order IDs and query payments table
-        # Match payment.order_id with order.id
-        if orders:
-            order_ids = [order.id for order in orders]
-
-            # Query payments table using the order IDs
-            payment_from_order_stmt = (
-                select(Payment.amount_minor, Payment.captured_at)
-                .where(Payment.order_id.in_(order_ids))
-                .where(func.date(Payment.captured_at) >= start_date_obj)
-                .where(func.date(Payment.captured_at) <= end_date_obj)
-            )
-
-            payment_from_order_result = await db.execute(payment_from_order_stmt)
-            payments_from_orders = payment_from_order_result.all()
-
-            for payment in payments_from_orders:
-                total_revenue += payment.amount_minor or 0
-
-        # SECOND CONDITION: Direct query on payments table
-        # Filters:
-        # - provider = 'google_play'
-        # - status = 'captured'
-        payment_stmt = (
-            select(Payment.amount_minor, Payment.captured_at)
-            .where(Payment.provider == "google_play")
-            .where(Payment.status == "captured")
-            .where(func.date(Payment.captured_at) >= start_date_obj)
-            .where(func.date(Payment.captured_at) <= end_date_obj)
-        )
-
-        payment_result = await db.execute(payment_stmt)
-        payments = payment_result.all()
-
-        for payment in payments:
-            total_revenue += payment.amount_minor or 0
-    except Exception as e:
-        pass
-
-    # 4. GYM MEMBERSHIP REVENUE
-    try:
-        payment_stmt = (
-            select(Payment, Order)
-            .join(Order, Order.id == Payment.order_id)
-            .where(Payment.status == "captured")
-            .where(Order.status == "paid")
-            .where(func.date(Payment.captured_at) >= start_date_obj)
-            .where(func.date(Payment.captured_at) <= end_date_obj)
-        )
-        payment_result = await db.execute(payment_stmt)
-        payments = payment_result.all()
-
-        # Collect order IDs to fetch gym info from order_items
-        order_ids = [row.Order.id for row in payments]
-
-        # Fetch order items to get gym_ids
-        order_gym_mapping = {}
-        if order_ids:
-            order_items_stmt = (
-                select(OrderItem)
-                .where(OrderItem.order_id.in_(order_ids))
-                .where(OrderItem.gym_id.isnot(None))
-            )
-            order_items_result = await db.execute(order_items_stmt)
-            order_items = order_items_result.scalars().all()
-
-            # Create mapping from order_id to gym_id
-            for item in order_items:
-                if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
-                    order_gym_mapping[item.order_id] = int(item.gym_id)
-
-        for row in payments:
-            order = row.Order
-
-            # Check order_metadata for specific conditions
-            if not order.order_metadata or not isinstance(order.order_metadata, dict):
-                continue
-
-            metadata = order.order_metadata
-
-            # Condition 1: audit.source = "dailypass_checkout_api"
-            condition1 = False
-            if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
-                if metadata["audit"].get("source") == "dailypass_checkout_api":
-                    condition1 = True
-
-            # Condition 2: order_info.flow = "unified_gym_membership_with_sub"
-            condition2 = False
-            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
-                    condition2 = True
-
-            # Only include if either condition matches
-            if condition1 or condition2:
-                total_revenue += order.gross_amount_minor or 0
-    except Exception as e:
-        pass
+    # Revenue in custom range - using centralized revenue service
+    revenue_data = await get_revenue_breakdown(
+        db=db,
+        start_date=start_date_obj,
+        end_date=end_date_obj,
+        exclude_gym_id_one=True
+    )
+    total_revenue = revenue_data.total_revenue
 
     # Subscribed users in custom range (subscriptions that started in custom range and are still active)
     now = datetime.now()
@@ -331,7 +209,7 @@ async def get_fittbot_metrics_custom(db: AsyncSession, start_date: str, end_date
             "week": "₹0",
             "month": "₹0",
             "overall": "₹0",
-            "custom": f"₹{total_revenue / 100:,.0f}"
+            "custom": f"₹{paise_to_rupees(total_revenue):,.0f}"
         },
         "subscribedUsers": {
             "today": 0,
@@ -451,171 +329,47 @@ async def get_business_metrics_custom(db: AsyncSession, start_date: str, end_dat
     }
 
 async def calculate_revenue(db: AsyncSession, today):
-   
-    async def get_revenue_for_date_range(start_date, end_date):
-        """Helper function to calculate revenue for a given date range from all 4 sources"""
-        total_revenue = 0
+    """
+    Calculate revenue for different time periods using centralized revenue service.
 
-        # 1. DAILY PASS REVENUE
-        try:
-            dailypass_session = get_dailypass_session()
-            daily_pass_query = dailypass_session.query(DailyPass).filter(
-                func.date(DailyPass.created_at) >= start_date,
-                func.date(DailyPass.created_at) <= end_date
-            )
-            daily_passes = daily_pass_query.all()
-            for dp in daily_passes:
-                total_revenue += dp.amount_paid or 0
-            dailypass_session.close()
-        except Exception:
-            pass
+    Returns formatted revenue strings in rupees.
+    """
+    # Calculate revenue for different time periods using centralized service
+    revenue_today = await get_revenue_breakdown(
+        db=db,
+        start_date=today,
+        end_date=today,
+        exclude_gym_id_one=True
+    )
 
-        # 2. SESSIONS REVENUE
-        try:
-            session_stmt = (
-                select(SessionBookingDay, SessionBooking)
-                .join(SessionBooking, SessionBooking.schedule_id == SessionBookingDay.schedule_id, isouter=True)
-                .where(func.date(SessionBookingDay.booking_date) >= start_date)
-                .where(func.date(SessionBookingDay.booking_date) <= end_date)
-            )
-            session_result = await db.execute(session_stmt)
-            sessions = session_result.all()
-            for row in sessions:
-                booking_info = row.SessionBooking
-                if booking_info and booking_info.price_paid:
-                    total_revenue += booking_info.price_paid
-        except Exception:
-            pass
+    revenue_week = await get_revenue_breakdown(
+        db=db,
+        start_date=today - timedelta(days=7),
+        end_date=today,
+        exclude_gym_id_one=True
+    )
 
-        # 3. FITTBOT SUBSCRIPTION REVENUE
-        # Using same logic as revenue-analytics API
-        try:
-            # FIRST CONDITION: Orders table -> Payments table
-            # Step 1: Query orders table with filters
-            # - status = 'paid'
-            # - provider_order_id starts with 'sub_'
-            order_stmt = (
-                select(Order.id)
-                .where(Order.provider_order_id.like("sub_%"))
-                .where(Order.status == "paid")
-            )
-            order_result = await db.execute(order_stmt)
-            orders = order_result.all()
-
-            # Step 2: Get order IDs and query payments table
-            # Match payment.order_id with order.id
-            if orders:
-                order_ids = [order.id for order in orders]
-
-                # Query payments table using the order IDs
-                payment_from_order_stmt = (
-                    select(Payment.amount_minor, Payment.captured_at)
-                    .where(Payment.order_id.in_(order_ids))
-                    .where(func.date(Payment.captured_at) >= start_date)
-                    .where(func.date(Payment.captured_at) <= end_date)
-                )
-
-                payment_from_order_result = await db.execute(payment_from_order_stmt)
-                payments_from_orders = payment_from_order_result.all()
-
-                for payment in payments_from_orders:
-                    total_revenue += payment.amount_minor or 0
-
-            # SECOND CONDITION: Direct query on payments table
-            # Filters:
-            # - provider = 'google_play'
-            # - status = 'captured'
-            payment_stmt = (
-                select(Payment.amount_minor, Payment.captured_at)
-                .where(Payment.provider == "google_play")
-                .where(Payment.status == "captured")
-                .where(func.date(Payment.captured_at) >= start_date)
-                .where(func.date(Payment.captured_at) <= end_date)
-            )
-
-            payment_result = await db.execute(payment_stmt)
-            payments = payment_result.all()
-
-            for payment in payments:
-                total_revenue += payment.amount_minor or 0
-        except Exception:
-            pass
-
-        # 4. GYM MEMBERSHIP REVENUE
-        try:
-            payment_stmt = (
-                select(Payment, Order)
-                .join(Order, Order.id == Payment.order_id)
-                .where(Payment.status == "captured")
-                .where(Order.status == "paid")
-                .where(func.date(Payment.captured_at) >= start_date)
-                .where(func.date(Payment.captured_at) <= end_date)
-            )
-            payment_result = await db.execute(payment_stmt)
-            payments = payment_result.all()
-
-            # Collect order IDs to fetch gym info from order_items
-            order_ids = [row.Order.id for row in payments]
-
-            # Fetch order items to get gym_ids
-            order_gym_mapping = {}
-            if order_ids:
-                order_items_stmt = (
-                    select(OrderItem)
-                    .where(OrderItem.order_id.in_(order_ids))
-                    .where(OrderItem.gym_id.isnot(None))
-                )
-                order_items_result = await db.execute(order_items_stmt)
-                order_items = order_items_result.scalars().all()
-
-                # Create mapping from order_id to gym_id
-                for item in order_items:
-                    if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
-                        order_gym_mapping[item.order_id] = int(item.gym_id)
-
-            for row in payments:
-                order = row.Order
-
-                # Check order_metadata for specific conditions
-                if not order.order_metadata or not isinstance(order.order_metadata, dict):
-                    continue
-
-                metadata = order.order_metadata
-
-                # Condition 1: audit.source = "dailypass_checkout_api"
-                condition1 = False
-                if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
-                    if metadata["audit"].get("source") == "dailypass_checkout_api":
-                        condition1 = True
-
-                # Condition 2: order_info.flow = "unified_gym_membership_with_sub"
-                condition2 = False
-                if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                    if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
-                        condition2 = True
-
-                # Only include if either condition matches
-                if condition1 or condition2:
-                    total_revenue += order.gross_amount_minor or 0
-        except Exception:
-            pass
-
-        return total_revenue
-
-    # Calculate revenue for different time periods
-    revenue_today = await get_revenue_for_date_range(today, today)
-    revenue_week = await get_revenue_for_date_range(today - timedelta(days=7), today)
-    revenue_month = await get_revenue_for_date_range(today - timedelta(days=30), today)
+    revenue_month = await get_revenue_breakdown(
+        db=db,
+        start_date=today - timedelta(days=30),
+        end_date=today,
+        exclude_gym_id_one=True
+    )
 
     # Overall revenue (all time)
-    revenue_overall = await get_revenue_for_date_range(datetime(2020, 1, 1).date(), today)
+    revenue_overall = await get_revenue_breakdown(
+        db=db,
+        start_date=datetime(2020, 1, 1).date(),
+        end_date=today,
+        exclude_gym_id_one=True
+    )
 
     # Convert from paise to rupees and format
     return {
-        "today": f"₹{revenue_today / 100:,.0f}",
-        "week": f"₹{revenue_week / 100:,.0f}",
-        "month": f"₹{revenue_month / 100:,.0f}",
-        "overall": f"₹{revenue_overall / 100:,.0f}"
+        "today": f"₹{paise_to_rupees(revenue_today.total_revenue):,.0f}",
+        "week": f"₹{paise_to_rupees(revenue_week.total_revenue):,.0f}",
+        "month": f"₹{paise_to_rupees(revenue_month.total_revenue):,.0f}",
+        "overall": f"₹{paise_to_rupees(revenue_overall.total_revenue):,.0f}"
     }
 
 async def calculate_subscribed_users(db: AsyncSession, today):
@@ -1195,345 +949,62 @@ async def get_revenue_analytics(
     gym_id: int = None,
     db: AsyncSession = Depends(get_async_db)
 ):
-    
+    """
+    Get revenue analytics data using centralized revenue service.
+
+    Provides:
+    - Total revenue
+    - Source-wise breakdown
+    - Daily revenue over time
+    - Gym-wise revenue breakdown
+    """
     try:
         # Parse dates if provided
         if start_date:
             start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
         else:
-            # Default to early date for overall data
             start_date_obj = datetime(2020, 1, 1).date()
 
         if end_date:
             end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
         else:
-            # Default to today
             end_date_obj = datetime.now().date()
 
-        total_revenue = 0
-        source_revenue = {
-            "daily_pass": 0,
-            "sessions": 0,
-            "fittbot_subscription": 0,
-            "gym_membership": 0
-        }
-        daily_revenue = {}
-        gym_revenue = {}
+        # Use centralized revenue service for detailed breakdowns
+        revenue_data = await get_detailed_revenue_with_breakdowns(
+            db=db,
+            start_date=start_date_obj,
+            end_date=end_date_obj,
+            source=source,
+            specific_gym_id=gym_id,
+            exclude_gym_id_one=True
+        )
 
-        # 1. DAILY PASS REVENUE
-        # Query: daily_passes table filtered by created_at date range
-        # Amount: amount_paid field
-        if not source or source == "daily_pass":
-            try:
-                dailypass_session = get_dailypass_session()
-
-                daily_pass_query = dailypass_session.query(DailyPass).filter(
-                    func.date(DailyPass.created_at) >= start_date_obj,
-                    func.date(DailyPass.created_at) <= end_date_obj
-                )
-
-                # Apply gym filter if provided
-                if gym_id:
-                    daily_pass_query = daily_pass_query.filter(DailyPass.gym_id == str(gym_id))
-
-                daily_passes = daily_pass_query.all()
-
-                for dp in daily_passes:
-                    amount = dp.amount_paid or 0
-                    total_revenue += amount
-                    source_revenue["daily_pass"] += amount
-
-                    # Track daily revenue
-                    date_key = dp.created_at.date().isoformat()
-                    if date_key not in daily_revenue:
-                        daily_revenue[date_key] = 0
-                    daily_revenue[date_key] += amount
-
-                    # Track gym-wise revenue
-                    if dp.gym_id:
-                        try:
-                            gym_key = int(dp.gym_id)
-                            if gym_key not in gym_revenue:
-                                gym_revenue[gym_key] = 0
-                            gym_revenue[gym_key] += amount
-                        except (ValueError, TypeError):
-                            pass
-
-                dailypass_session.close()
-            except Exception:
-                pass
-
-        # 2. SESSIONS REVENUE
-        # Query: session_booking_days joined with session_bookings
-        # Filter: booking_date (or created_at) in date range
-        # Amount: price_paid from session_bookings table
-        if not source or source == "sessions":
-            try:
-                session_stmt = (
-                    select(SessionBookingDay, SessionBooking)
-                    .join(SessionBooking, SessionBooking.schedule_id == SessionBookingDay.schedule_id, isouter=True)
-                    .where(func.date(SessionBookingDay.booking_date) >= start_date_obj)
-                    .where(func.date(SessionBookingDay.booking_date) <= end_date_obj)
-                )
-
-                # Apply gym filter if provided
-                if gym_id:
-                    session_stmt = session_stmt.where(SessionBookingDay.gym_id == gym_id)
-
-                session_result = await db.execute(session_stmt)
-                sessions = session_result.all()
-
-                for row in sessions:
-                    booking = row.SessionBookingDay
-                    booking_info = row.SessionBooking
-                    amount = booking_info.price_paid if booking_info else 0
-
-                    total_revenue += amount
-                    source_revenue["sessions"] += amount
-
-                    # Track daily revenue
-                    date_key = booking.booking_date.isoformat() if booking.booking_date else None
-                    if date_key:
-                        if date_key not in daily_revenue:
-                            daily_revenue[date_key] = 0
-                        daily_revenue[date_key] += amount
-
-                    # Track gym-wise revenue
-                    if booking.gym_id:
-                        if booking.gym_id not in gym_revenue:
-                            gym_revenue[booking.gym_id] = 0
-                        gym_revenue[booking.gym_id] += amount
-
-            except Exception:
-                pass
-
-        # 3. FITTBOT SUBSCRIPTION REVENUE
-        # Using same logic as recurring-subscribers and purchase-history
-        # FIRST CONDITION: Orders table -> Payments table
-        # SECOND CONDITION: Payments table directly
-        # Amount: amount_minor from payments table
-        # NOTE: Skip fittbot_subscription when gym filter is applied (not gym-specific revenue)
-        if (not source or source == "fittbot_subscription") and not gym_id:
-            try:
-                # FIRST CONDITION: Orders table -> Payments table
-                # Step 1: Query orders table with filters
-                # - status = 'paid'
-                # - provider_order_id starts with 'sub_'
-                order_stmt = (
-                    select(Order.id)
-                    .where(Order.provider_order_id.like("sub_%"))
-                    .where(Order.status == "paid")
-                )
-
-                order_result = await db.execute(order_stmt)
-                orders = order_result.all()
-
-                # Step 2: Get order IDs and query payments table
-                # Match payment.order_id with order.id
-                if orders:
-                    order_ids = [order.id for order in orders]
-
-                    # Query payments table using the order IDs
-                    payment_from_order_stmt = (
-                        select(Payment.amount_minor, Payment.captured_at)
-                        .where(Payment.order_id.in_(order_ids))
-                        .where(func.date(Payment.captured_at) >= start_date_obj)
-                        .where(func.date(Payment.captured_at) <= end_date_obj)
-                    )
-
-                    payment_from_order_result = await db.execute(payment_from_order_stmt)
-                    payments_from_orders = payment_from_order_result.all()
-
-                    for payment in payments_from_orders:
-                        amount = payment.amount_minor or 0
-                        total_revenue += amount
-                        source_revenue["fittbot_subscription"] += amount
-
-                        # Track daily revenue
-                        date_key = payment.captured_at.date().isoformat() if payment.captured_at else None
-                        if date_key:
-                            if date_key not in daily_revenue:
-                                daily_revenue[date_key] = 0
-                            daily_revenue[date_key] += amount
-
-                # SECOND CONDITION: Direct query on payments table
-                # Filters:
-                # - provider = 'google_play'
-                # - status = 'captured'
-                payment_stmt = (
-                    select(Payment.amount_minor, Payment.captured_at)
-                    .where(Payment.provider == "google_play")
-                    .where(Payment.status == "captured")
-                    .where(func.date(Payment.captured_at) >= start_date_obj)
-                    .where(func.date(Payment.captured_at) <= end_date_obj)
-                )
-
-                payment_result = await db.execute(payment_stmt)
-                payments = payment_result.all()
-
-                for payment in payments:
-                    amount = payment.amount_minor or 0
-                    total_revenue += amount
-                    source_revenue["fittbot_subscription"] += amount
-
-                    # Track daily revenue
-                    date_key = payment.captured_at.date().isoformat() if payment.captured_at else None
-                    if date_key:
-                        if date_key not in daily_revenue:
-                            daily_revenue[date_key] = 0
-                        daily_revenue[date_key] += amount
-
-            except Exception:
-                pass
-
-        # 4. GYM MEMBERSHIP REVENUE
-        # Query: payments joined with orders
-        # Filters: status = 'captured', order.status = 'paid'
-        # Metadata conditions: audit.source = "dailypass_checkout_api" OR order_info.flow = "unified_gym_membership_with_sub"
-        # Amount: gross_amount_minor from orders table
-        # Gym: from order_items table
-        if not source or source == "gym_membership":
-            try:
-                payment_stmt = (
-                    select(Payment, Order)
-                    .join(Order, Order.id == Payment.order_id)
-                    .where(Payment.status == "captured")
-                    .where(Order.status == "paid")
-                    .where(func.date(Payment.captured_at) >= start_date_obj)
-                    .where(func.date(Payment.captured_at) <= end_date_obj)
-                )
-
-                # Apply gym filter if provided (filter by order_items gym_id)
-                if gym_id:
-                    # For gym filter, we need to join with order_items
-                    from sqlalchemy.orm import aliased
-                    OrderItemAlias = aliased(OrderItem)
-                    payment_stmt = (
-                        select(Payment, Order)
-                        .join(Order, Order.id == Payment.order_id)
-                        .join(OrderItemAlias, OrderItemAlias.order_id == Order.id)
-                        .where(Payment.status == "captured")
-                        .where(Order.status == "paid")
-                        .where(OrderItemAlias.gym_id == str(gym_id))
-                        .where(func.date(Payment.captured_at) >= start_date_obj)
-                        .where(func.date(Payment.captured_at) <= end_date_obj)
-                    )
-
-                payment_result = await db.execute(payment_stmt)
-                payments = payment_result.all()
-
-                # Collect order IDs to fetch gym info from order_items
-                order_ids = [row.Order.id for row in payments]
-
-                # Fetch order items to get gym_ids
-                order_gym_mapping = {}
-                if order_ids and not gym_id:
-                    order_items_stmt = (
-                        select(OrderItem)
-                        .where(OrderItem.order_id.in_(order_ids))
-                        .where(OrderItem.gym_id.isnot(None))
-                    )
-                    order_items_result = await db.execute(order_items_stmt)
-                    order_items = order_items_result.scalars().all()
-
-                    # Create mapping from order_id to gym_id
-                    # When multiple rows exist for same order_id, prefer the one with valid gym_id
-                    for item in order_items:
-                        if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
-                            order_gym_mapping[item.order_id] = int(item.gym_id)
-
-                for row in payments:
-                    payment = row.Payment
-                    order = row.Order
-
-                    # Check order_metadata for specific conditions
-                    if not order.order_metadata or not isinstance(order.order_metadata, dict):
-                        continue
-
-                    metadata = order.order_metadata
-
-                    # Condition 1: audit.source = "dailypass_checkout_api"
-                    condition1 = False
-                    if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
-                        if metadata["audit"].get("source") == "dailypass_checkout_api":
-                            condition1 = True
-
-                    # Condition 2: order_info.flow = "unified_gym_membership_with_sub"
-                    condition2 = False
-                    if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                        if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
-                            condition2 = True
-
-                    # Only include if either condition matches
-                    if not (condition1 or condition2):
-                        continue
-
-                    amount = order.gross_amount_minor or 0
-                    total_revenue += amount
-                    source_revenue["gym_membership"] += amount
-
-                    # Track daily revenue
-                    date_key = payment.captured_at.date().isoformat() if payment.captured_at else None
-                    if date_key:
-                        if date_key not in daily_revenue:
-                            daily_revenue[date_key] = 0
-                        daily_revenue[date_key] += amount
-
-                    # Track gym-wise revenue (only if not filtering by specific gym)
-                    if not gym_id:
-                        gym_key = order_gym_mapping.get(order.id)
-                        if gym_key:
-                            if gym_key not in gym_revenue:
-                                gym_revenue[gym_key] = 0
-                            gym_revenue[gym_key] += amount
-                    elif gym_id:
-                        # When filtering by gym, all revenue belongs to that gym
-                        if gym_id not in gym_revenue:
-                            gym_revenue[gym_id] = 0
-                        gym_revenue[gym_id] += amount
-
-            except Exception:
-                pass
-
-        # Convert daily revenue to sorted array
-        revenue_over_time = [
-            {
-                "date": date,
-                "revenue": amount / 100  # Convert to rupees
-            }
-            for date, amount in sorted(daily_revenue.items())
-        ]
-
-        # Get gym names for gym-wise breakdown
-        gym_names = {}
-        if gym_revenue:
-            gym_ids = list(gym_revenue.keys())
-            gym_stmt = select(Gym.gym_id, Gym.name).where(Gym.gym_id.in_(gym_ids))
-            gym_result = await db.execute(gym_stmt)
-            for gym_id_val, gym_name in gym_result.all():
-                gym_names[gym_id_val] = gym_name
-
-        # Convert gym_revenue to array
-        gym_breakdown = [
-            {
-                "gym_id": gym_id,
-                "gym_name": gym_names.get(gym_id, f"Gym {gym_id}"),
-                "revenue": amount / 100
-            }
-            for gym_id, amount in sorted(gym_revenue.items(), key=lambda x: x[1], reverse=True)
-        ]
-
+        # Build response data
         analytics_data = {
-            "totalRevenue": total_revenue / 100,  # Convert to rupees
-            "sourceSplit": source_revenue,
-            "sourceSplitRupees": {
-                "daily_pass": source_revenue["daily_pass"] / 100,
-                "sessions": source_revenue["sessions"] / 100,
-                "fittbot_subscription": source_revenue["fittbot_subscription"] / 100,
-                "gym_membership": source_revenue["gym_membership"] / 100
+            "totalRevenue": revenue_data.total_revenue,
+            "sourceSplit": {
+                "daily_pass": revenue_data.source_split["daily_pass"],
+                "sessions": revenue_data.source_split["sessions"],
+                "fittbot_subscription": revenue_data.source_split["fittbot_subscription"],
+                "gym_membership": revenue_data.source_split["gym_membership"]
             },
-            "revenueOverTime": revenue_over_time,
-            "gymBreakdown": gym_breakdown,
+            "sourceSplitRupees": revenue_data.source_split_rupees,
+            "revenueOverTime": [
+                {
+                    "date": point.date,
+                    "revenue": point.revenue
+                }
+                for point in revenue_data.daily_revenue
+            ],
+            "gymBreakdown": [
+                {
+                    "gym_id": point.gym_id,
+                    "gym_name": point.gym_name,
+                    "revenue": point.revenue
+                }
+                for point in revenue_data.gym_breakdown
+            ],
             "filters": {
                 "startDate": start_date_obj.isoformat(),
                 "endDate": end_date_obj.isoformat(),
@@ -1551,6 +1022,9 @@ async def get_revenue_analytics(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
     except Exception as e:
+        print(f"[DASHBOARD] Error in revenue-analytics: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2351,7 +1825,8 @@ async def get_purchase_analytics(
                     func.count(distinct(DailyPass.client_id)).label('total_unique_users')
                 ).filter(
                     func.date(DailyPass.created_at) >= start_date_obj,
-                    func.date(DailyPass.created_at) <= end_date_obj
+                    func.date(DailyPass.created_at) <= end_date_obj,
+                    DailyPass.gym_id != "1"  # Exclude gym_id = 1
                 )
 
                 # Apply gym filter if provided
@@ -2381,7 +1856,8 @@ async def get_purchase_analytics(
                     func.count().label('purchase_count')
                 ).filter(
                     func.date(DailyPass.created_at) >= start_date_obj,
-                    func.date(DailyPass.created_at) <= end_date_obj
+                    func.date(DailyPass.created_at) <= end_date_obj,
+                    DailyPass.gym_id != "1"  # Exclude gym_id = 1
                 )
 
                 # Apply gym filter if provided
@@ -2443,7 +1919,8 @@ async def get_purchase_analytics(
                     ).filter(
                         func.date(DailyPass.created_at) >= start_date_obj,
                         func.date(DailyPass.created_at) <= end_date_obj,
-                        DailyPass.gym_id.isnot(None)
+                        DailyPass.gym_id.isnot(None),
+                        DailyPass.gym_id != "1"  # Exclude gym_id = 1
                     )
 
                     # Apply location filter if provided
@@ -2473,7 +1950,8 @@ async def get_purchase_analytics(
                         ).filter(
                             func.date(DailyPass.created_at) >= start_date_obj,
                             func.date(DailyPass.created_at) <= end_date_obj,
-                            DailyPass.client_id.isnot(None)
+                            DailyPass.client_id.isnot(None),
+                            DailyPass.gym_id != "1"  # Exclude gym_id = 1
                         )
 
                         # Apply gym filter if provided
@@ -2486,7 +1964,8 @@ async def get_purchase_analytics(
                         ).filter(
                             func.date(DailyPass.created_at) >= start_date_obj,
                             func.date(DailyPass.created_at) <= end_date_obj,
-                            DailyPass.client_id.isnot(None)
+                            DailyPass.client_id.isnot(None),
+                            DailyPass.gym_id != "1"  # Exclude gym_id = 1
                         )
 
                         # Apply gym filter if provided
@@ -2541,7 +2020,8 @@ async def get_purchase_analytics(
                     .select_from(SessionBookingDay)
                     .where(
                         func.date(SessionBookingDay.booking_date) >= start_date_obj,
-                        func.date(SessionBookingDay.booking_date) <= end_date_obj
+                        func.date(SessionBookingDay.booking_date) <= end_date_obj,
+                        SessionBookingDay.gym_id != 1  # Exclude gym_id = 1
                     )
                 )
 
@@ -2569,7 +2049,8 @@ async def get_purchase_analytics(
                     .select_from(SessionBookingDay)
                     .where(
                         func.date(SessionBookingDay.booking_date) >= start_date_obj,
-                        func.date(SessionBookingDay.booking_date) <= end_date_obj
+                        func.date(SessionBookingDay.booking_date) <= end_date_obj,
+                        SessionBookingDay.gym_id != 1  # Exclude gym_id = 1
                     )
                 )
 
@@ -2640,7 +2121,8 @@ async def get_purchase_analytics(
                         .where(
                             func.date(SessionBookingDay.booking_date) >= start_date_obj,
                             func.date(SessionBookingDay.booking_date) <= end_date_obj,
-                            SessionBookingDay.gym_id.isnot(None)
+                            SessionBookingDay.gym_id.isnot(None),
+                            SessionBookingDay.gym_id != 1  # Exclude gym_id = 1
                         )
                     )
 
@@ -2668,7 +2150,8 @@ async def get_purchase_analytics(
                             .where(
                                 func.date(SessionBookingDay.booking_date) >= start_date_obj,
                                 func.date(SessionBookingDay.booking_date) <= end_date_obj,
-                                SessionBookingDay.client_id.isnot(None)
+                                SessionBookingDay.client_id.isnot(None),
+                                SessionBookingDay.gym_id != 1  # Exclude gym_id = 1
                             )
                         )
 
@@ -2891,13 +2374,16 @@ async def get_purchase_analytics(
                         select(OrderItem)
                         .where(OrderItem.order_id.in_(order_ids))
                         .where(OrderItem.gym_id.isnot(None))
+                        .where(OrderItem.gym_id != "1")  # Exclude gym_id = 1
                     )
                     order_items_result = await db.execute(order_items_stmt)
                     order_items = order_items_result.scalars().all()
 
                     for item in order_items:
                         if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
-                            order_gym_mapping[item.order_id] = int(item.gym_id)
+                            gym_id_int = int(item.gym_id)
+                            if gym_id_int != 1:  # Exclude gym_id = 1
+                                order_gym_mapping[item.order_id] = gym_id_int
 
                 unique_customer_ids = set()
 
@@ -2918,7 +2404,12 @@ async def get_purchase_analytics(
                         if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
                             condition2 = True
 
-                    if not (condition1 or condition2):
+                    condition3 = False
+                    if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                        if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                            condition3 = True
+
+                    if not (condition1 or condition2 or condition3):
                         continue
 
                     date_key = payment.captured_at.date().isoformat() if payment.captured_at else None
@@ -2982,7 +2473,12 @@ async def get_purchase_analytics(
                                         if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
                                             condition2 = True
 
-                                    if condition1 or condition2:
+                                    condition3 = False
+                                    if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                                        if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                                            condition3 = True
+
+                                    if condition1 or condition2 or condition3:
                                         raw_loc = client_locations[str(order.customer_id)]
                                         # Normalize location: trim whitespace and replace spaces with underscores
                                         normalized_loc = raw_loc.strip().replace(' ', '_')
@@ -3165,6 +2661,241 @@ async def get_purchase_analytics(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/booking-averages")
+async def get_booking_averages(
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Get average bookings for different time periods with source breakdown.
+    Returns monthly average (last 3 months), weekly average (last 3 weeks),
+    and daily average (last 3 days), each broken down by source.
+    """
+    try:
+        today = datetime.now().date()
+
+        # Helper function to get purchases by source for a date range
+        async def get_purchases_by_source(start_date, end_date):
+            """Get purchases from all sources for a date range, broken down by source."""
+            result = {
+                "daily_pass": 0,
+                "sessions": 0,
+                "gym_membership": 0,
+                "fittbot_subscription": 0
+            }
+
+            # 1. Daily Pass purchases
+            try:
+                dailypass_session = get_dailypass_session()
+                dp_count = dailypass_session.query(func.count()).filter(
+                    and_(
+                        func.date(DailyPass.created_at) >= start_date,
+                        func.date(DailyPass.created_at) <= end_date,
+                        DailyPass.gym_id != "1"
+                    )
+                ).scalar()
+                result["daily_pass"] = dp_count or 0
+                dailypass_session.close()
+            except Exception:
+                pass
+
+            # 2. Session purchases (via SessionBookingDay)
+            try:
+                session_count_stmt = select(func.count()).select_from(SessionBookingDay).where(
+                    and_(
+                        func.date(SessionBookingDay.booking_date) >= start_date,
+                        func.date(SessionBookingDay.booking_date) <= end_date,
+                        SessionBookingDay.gym_id != 1
+                    )
+                )
+                session_result = await db.execute(session_count_stmt)
+                result["sessions"] = session_result.scalar() or 0
+            except Exception:
+                pass
+
+            # 3. Gym membership purchases (from Order/OrderItem with metadata)
+            try:
+                gym_membership_start = datetime.combine(start_date, datetime.min.time())
+                gym_membership_end = datetime.combine(end_date, datetime.min.time()).replace(hour=23, minute=59, second=59)
+
+                order_ids_subquery = (
+                    select(Order.id)
+                    .join(Payment, Payment.order_id == Order.id)
+                    .where(
+                        and_(
+                            Payment.status == "captured",
+                            Order.status == "paid",
+                            Payment.captured_at >= gym_membership_start,
+                            Payment.captured_at <= gym_membership_end
+                        )
+                    )
+                )
+
+                orders_result = await db.execute(order_ids_subquery)
+                order_ids = [row[0] for row in orders_result.all()]
+
+                if order_ids:
+                    order_items_stmt = select(OrderItem).where(
+                        and_(
+                            OrderItem.order_id.in_(order_ids),
+                            OrderItem.gym_id.isnot(None),
+                            OrderItem.gym_id != "1"
+                        )
+                    )
+                    order_items_result = await db.execute(order_items_stmt)
+                    order_items = order_items_result.scalars().all()
+
+                    for item in order_items:
+                        if item.order_id:
+                            order_stmt = select(Order).where(Order.id == item.order_id)
+                            order_result = await db.execute(order_stmt)
+                            order = order_result.scalar_one_or_none()
+
+                            if order and order.order_metadata and isinstance(order.order_metadata, dict):
+                                metadata = order.order_metadata
+                                condition1 = False
+                                if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
+                                    if metadata["audit"].get("source") == "dailypass_checkout_api":
+                                        condition1 = True
+
+                                condition2 = False
+                                if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                                    if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
+                                        condition2 = True
+
+                                condition3 = False
+                                if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                                    if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                                        condition3 = True
+
+                                if condition1 or condition2 or condition3:
+                                    result["gym_membership"] += 1
+            except Exception:
+                pass
+
+            # 4. Fittbot subscription purchases
+            try:
+                subscription_start = datetime.combine(start_date, datetime.min.time())
+                subscription_end = datetime.combine(end_date, datetime.min.time()).replace(hour=23, minute=59, second=59)
+
+                # First condition: Orders with sub_
+                order_id_subquery = (
+                    select(Order.id)
+                    .where(
+                        and_(
+                            Order.provider_order_id.like("sub_%"),
+                            Order.status == "paid"
+                        )
+                    )
+                )
+
+                payment_from_order_stmt = select(func.count()).where(
+                    and_(
+                        Payment.order_id.in_(order_id_subquery),
+                        Payment.captured_at >= subscription_start,
+                        Payment.captured_at <= subscription_end
+                    )
+                )
+                result1 = await db.execute(payment_from_order_stmt)
+                sub_count = result1.scalar() or 0
+
+                # Second condition: Google Play payments
+                payment_direct_stmt = select(func.count()).where(
+                    and_(
+                        Payment.provider == "google_play",
+                        Payment.status == "captured",
+                        Payment.captured_at >= subscription_start,
+                        Payment.captured_at <= subscription_end
+                    )
+                )
+                result2 = await db.execute(payment_direct_stmt)
+                google_count = result2.scalar() or 0
+
+                result["fittbot_subscription"] = sub_count + google_count
+            except Exception:
+                pass
+
+            return result
+
+        # Helper to calculate average from list of source-wise data
+        def calculate_source_averages(data_list):
+            """Calculate average for each source across data points."""
+            if not data_list:
+                return {"daily_pass": 0, "sessions": 0, "gym_membership": 0, "fittbot_subscription": 0}
+
+            num_points = len(data_list)
+            return {
+                "daily_pass": round(sum(d["daily_pass"] for d in data_list) / num_points, 2),
+                "sessions": round(sum(d["sessions"] for d in data_list) / num_points, 2),
+                "gym_membership": round(sum(d["gym_membership"] for d in data_list) / num_points, 2),
+                "fittbot_subscription": round(sum(d["fittbot_subscription"] for d in data_list) / num_points, 2)
+            }
+
+        # Calculate Daily Average (last 3 days) with source breakdown
+        daily_source_data = []
+        for i in range(3):
+            day_date = today - timedelta(days=i)
+            day_data = await get_purchases_by_source(day_date, day_date)
+            daily_source_data.append(day_data)
+        daily_average = calculate_source_averages(daily_source_data)
+
+        # Calculate Weekly Average (last 3 FULL weeks) with source breakdown
+        weekly_source_data = []
+        for i in range(3):
+            # Last 3 FULL weeks - exclude current incomplete week
+            # Week 1: 7-13 days ago (full week)
+            # Week 2: 14-20 days ago (full week)
+            # Week 3: 21-27 days ago (full week)
+            week_end = today - timedelta(days=(i * 7) + 1)  # Start from yesterday to ensure full week
+            week_start = week_end - timedelta(days=6)
+            week_data = await get_purchases_by_source(week_start, week_end)
+            weekly_source_data.append(week_data)
+        weekly_average = calculate_source_averages(weekly_source_data)
+
+        # Calculate Monthly Average (last 3 FULL months) with source breakdown
+        monthly_source_data = []
+        for i in range(3):
+            # Last 3 FULL months - exclude current incomplete month
+            # Month 1: Previous full month
+            # Month 2: 2 months ago (full month)
+            # Month 3: 3 months ago (full month)
+            month_date = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+            for _ in range(i):
+                month_date = (month_date - timedelta(days=1)).replace(day=1)
+            month_start = month_date
+            # Get last day of the month
+            next_month = month_date.replace(day=28) + timedelta(days=4)
+            month_end = next_month - timedelta(days=next_month.day)
+
+            month_data = await get_purchases_by_source(month_start, month_end)
+            monthly_source_data.append(month_data)
+        monthly_average = calculate_source_averages(monthly_source_data)
+
+        # Calculate totals for display
+        daily_total = round(sum(daily_average.values()), 2)
+        weekly_total = round(sum(weekly_average.values()), 2)
+        monthly_total = round(sum(monthly_average.values()), 2)
+
+        return {
+            "success": True,
+            "data": {
+                "dailyAverage": daily_total,
+                "weeklyAverage": weekly_total,
+                "monthlyAverage": monthly_total,
+                "dailyBreakdown": daily_average,
+                "weeklyBreakdown": weekly_average,
+                "monthlyBreakdown": monthly_average
+            },
+            "message": "Booking averages fetched successfully"
+        }
+
+    except Exception as e:
+        import logging
+        logging.error(f"Error in booking-averages: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

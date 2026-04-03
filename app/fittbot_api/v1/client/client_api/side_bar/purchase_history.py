@@ -9,7 +9,7 @@ from app.models.async_database import get_async_db
 from app.fittbot_api.v1.payments.models.subscriptions import Subscription
 from app.fittbot_api.v1.payments.models.catalog import CatalogProduct
 from app.fittbot_api.v1.payments.models.entitlements import Entitlement
-from app.fittbot_api.v1.payments.models.orders import OrderItem
+from app.fittbot_api.v1.payments.models.orders import OrderItem, Order
 from app.fittbot_api.v1.payments.models.payments import Payment
 from app.models.dailypass_models import DailyPass
 from app.models.fittbot_models import Gym, FittbotGymMembership, SessionPurchase, ClassSession, GymPlans
@@ -226,6 +226,7 @@ async def get_membership_history(
             plan_map = {p.id: p for p in plan_result.scalars().all()}
 
         # Batch load payments for memberships that have entitlement_id
+        # Using Order-based approach with metadata conditions (same as bookings tab)
         entitlement_ids = list({m.entitlement_id for m in gym_memberships if m.entitlement_id})
         payment_map = {}
         if entitlement_ids:
@@ -245,20 +246,56 @@ async def get_membership_history(
                 # Get order_ids
                 order_ids = list({oi.order_id for oi in order_items.values() if oi.order_id})
                 if order_ids:
-                    # Get payments by order_id
-                    payment_stmt = select(Payment).where(
-                        Payment.order_id.in_(order_ids),
-                        Payment.status == "captured"
-                    )
-                    payment_result = await db.execute(payment_stmt)
-                    payments_by_order = {p.order_id: p for p in payment_result.scalars().all()}
+                    # Fetch Orders to check metadata conditions
+                    order_stmt = select(Order).where(Order.id.in_(order_ids))
+                    order_result = await db.execute(order_stmt)
+                    orders = {o.id: o for o in order_result.scalars().all()}
 
-                    # Build entitlement_id -> payment map
-                    for ent_id, ent in entitlements.items():
-                        if ent.order_item_id and ent.order_item_id in order_items:
-                            order_item = order_items[ent.order_item_id]
-                            if order_item.order_id in payments_by_order:
-                                payment_map[ent_id] = payments_by_order[order_item.order_id]
+                    # Filter orders by metadata conditions (same as bookings tab)
+                    valid_order_ids = set()
+                    for order in orders.values():
+                        if not order.order_metadata or not isinstance(order.order_metadata, dict):
+                            continue
+
+                        metadata = order.order_metadata
+
+                        # Condition 1: audit.source = "dailypass_checkout_api"
+                        condition1 = False
+                        if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
+                            if metadata["audit"].get("source") == "dailypass_checkout_api":
+                                condition1 = True
+
+                        # Condition 2: order_info.flow = "unified_gym_membership_with_sub"
+                        condition2 = False
+                        if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                            if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
+                                condition2 = True
+
+                        # Condition 3: order_info.flow = "unified_gym_membership_with_free_fittbot"
+                        condition3 = False
+                        if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
+                            if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
+                                condition3 = True
+
+                        # Only include if any condition matches
+                        if condition1 or condition2 or condition3:
+                            valid_order_ids.add(order.id)
+
+                    # Get payments only for valid orders (matching metadata conditions)
+                    if valid_order_ids:
+                        payment_stmt = select(Payment).where(
+                            Payment.order_id.in_(list(valid_order_ids)),
+                            Payment.status == "captured"
+                        )
+                        payment_result = await db.execute(payment_stmt)
+                        payments_by_order = {p.order_id: p for p in payment_result.scalars().all()}
+
+                        # Build entitlement_id -> payment map (only for valid orders)
+                        for ent_id, ent in entitlements.items():
+                            if ent.order_item_id and ent.order_item_id in order_items:
+                                order_item = order_items[ent.order_item_id]
+                                if order_item.order_id in payments_by_order:
+                                    payment_map[ent_id] = payments_by_order[order_item.order_id]
 
         def _format_gym_address(gym):
             if not gym:

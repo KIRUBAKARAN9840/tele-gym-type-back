@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from app.models.async_database import get_async_db
 from app.models.fittbot_models import Client, ActiveUser
 from app.fittbot_api.v1.payments.models.payments import Payment
+from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
 
 router = APIRouter(prefix="/api/admin/users-stats", tags=["AdminUsersStats"])
 
@@ -37,28 +38,28 @@ class CityStatsResponse(BaseModel):
 async def get_users_stats(
     db: AsyncSession = Depends(get_async_db)
 ):
-   
+
     try:
-        # Query 1: Count total clients
+        # Query 1: Count total clients (excluding gym_id = 1)
         # client_id is the primary key, so COUNT(*) gives us the total unique users
-        total_query = select(func.count()).select_from(Client)
+        total_query = select(func.count()).select_from(Client).where(Client.gym_id != 1)
         total_result = await db.execute(total_query)
         total_count = total_result.scalar() or 0
 
         # Query 2: Count distinct client_id from active_users where created_at >= 30 days ago
-        # Only include client_ids that have at least 2 rows with different dates
+        # Active users: users with at least 1 login in the last 30 days
+        # Exclude users from gym_id = 1
         thirty_days_ago = datetime.now() - timedelta(days=30)
 
-        # Subquery: Find client_ids that have at least 2 distinct dates in the last 30 days
-        active_subquery = select(ActiveUser.client_id).where(
-            ActiveUser.created_at >= thirty_days_ago
-        ).group_by(
-            ActiveUser.client_id
-        ).having(
-            func.count(func.distinct(func.date(ActiveUser.created_at))) >= 2
+        active_subquery = select(ActiveUser.client_id).join(
+            Client, ActiveUser.client_id == Client.client_id
+        ).where(
+            and_(
+                ActiveUser.created_at >= thirty_days_ago,
+                Client.gym_id != 1
+            )
         )
 
-        # Main query: Count distinct client_ids (each qualifying client = 1)
         active_query = select(
             func.coalesce(func.count(func.distinct(ActiveUser.client_id)), 0)
         ).where(
@@ -68,39 +69,57 @@ async def get_users_stats(
         active_count = active_result.scalar() or 0
 
         # Query 3: Count distinct customer_id from payments table (paying users)
-        # Schema: payments.payments
-        paying_query = select(
-            func.count(func.distinct(Payment.customer_id))
-        )
+        # Exclude payments associated with gym_id = 1
+        # Join: Payment -> Order -> OrderItem (to get gym_id)
+        paying_subquery = select(Payment.customer_id).join(
+            Order, Order.id == Payment.order_id
+        ).join(
+            OrderItem, OrderItem.order_id == Order.id
+        ).where(
+            and_(
+                OrderItem.gym_id.isnot(None),
+                OrderItem.gym_id != "1"
+            )
+        ).distinct().alias("paying_users_subquery")
+
+        paying_query = select(func.count()).select_from(paying_subquery)
         paying_result = await db.execute(paying_query)
         paying_count = paying_result.scalar() or 0
 
         # Query 4: Count customers who appear more than once (repeat users)
-        # Group by customer_id and count where count > 1
+        # Exclude payments associated with gym_id = 1
         repeat_subquery = select(
             Payment.customer_id
+        ).join(
+            Order, Order.id == Payment.order_id
+        ).join(
+            OrderItem, OrderItem.order_id == Order.id
+        ).where(
+            and_(
+                OrderItem.gym_id.isnot(None),
+                OrderItem.gym_id != "1"
+            )
         ).group_by(
             Payment.customer_id
         ).having(
             func.count(Payment.customer_id) > 1
-        )
-        repeat_query = select(
-            func.count()
-        ).select_from(
-            repeat_subquery.alias("repeat_users")
-        )
+        ).alias("repeat_users_subquery")
+
+        repeat_query = select(func.count()).select_from(repeat_subquery)
         repeat_result = await db.execute(repeat_query)
         repeat_count = repeat_result.scalar() or 0
 
         # Query 5: Get users per city with normalization
+        # Excluding gym_id = 1
         # Using pure SQLAlchemy ORM - no raw SQL
         # Fetch all locations and filter in Python for better compatibility
 
-        # Get all clients with valid locations (not null, not empty, not whitespace)
+        # Get all clients with valid locations (not null, not empty, not whitespace) and gym_id != 1
         clients_query = select(Client.location).where(
             and_(
                 Client.location.isnot(None),
-                func.trim(Client.location) != ''
+                func.trim(Client.location) != '',
+                Client.gym_id != 1
             )
         )
         clients_result = await db.execute(clients_query)
@@ -159,17 +178,18 @@ async def get_cities_paginated(
     """
     Get cities with offset-based pagination.
 
-    Returns cities ordered by users_count descending.
+    Returns cities ordered by users_count descending (excluding gym_id = 1).
     """
     try:
-        # Subquery to get grouped and counted cities
+        # Subquery to get grouped and counted cities (excluding gym_id = 1)
         city_group_subquery = select(
             func.trim(func.lower(Client.location)).label("normalized_city"),
             func.count(Client.client_id).label("users_count")
         ).where(
             and_(
                 Client.location.isnot(None),
-                func.trim(Client.location) != ''
+                func.trim(Client.location) != '',
+                Client.gym_id != 1
             )
         ).group_by(
             func.trim(func.lower(Client.location))

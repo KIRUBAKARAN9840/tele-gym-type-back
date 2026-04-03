@@ -1,19 +1,297 @@
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, cast, String, or_, desc, union, union_all, literal, over
+from sqlalchemy import select, func, cast, String, or_, and_, desc, union, union_all, literal, over
 from app.models.async_database import get_async_db
 from app.models.telecaller_models import Telecaller, UserConversion, ClientCallFeedback, ConvertedBy
-from app.models.fittbot_models import Client, Gym, GymOwner
+from app.models.fittbot_models import Client, Gym, GymOwner, SessionPurchase, FittbotGymMembership
+from app.models.dailypass_models import DailyPass, get_dailypass_session
+from app.fittbot_api.v1.payments.models.subscriptions import Subscription
+from app.fittbot_api.v1.payments.models.payments import Payment
+from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
+from app.fittbot_admin_api.users.usersDashboard import get_plan_name_from_product_id
+from datetime import datetime, timezone, timedelta
+
+# IST timezone
+IST = timezone(timedelta(hours=5, minutes=30))
 
 router = APIRouter(prefix="/api/admin/user-conversion", tags=["AdminUserConversion"])
+
+
+async def get_latest_purchase_type(user_id: str, db: AsyncSession) -> Optional[str]:
+    """
+    Get the latest purchase type for a user.
+    Returns a single string like "Daily Pass", "Session", "Gym Membership", or "Fittbot Subscription".
+    Optimized with a single UNION query.
+    """
+    try:
+        # Build a UNION query to get the latest purchase from all 4 types
+        daily_pass_sub = select(
+            DailyPass.created_at.label('purchase_date'),
+            literal('Daily Pass').label('purchase_type')
+        ).where(
+            DailyPass.client_id == user_id
+        )
+
+        session_sub = select(
+            SessionPurchase.created_at.label('purchase_date'),
+            literal('Session').label('purchase_type')
+        ).where(
+            and_(
+                SessionPurchase.client_id == user_id,
+                SessionPurchase.status == "paid"
+            )
+        )
+
+        membership_sub = select(
+            FittbotGymMembership.purchased_at.label('purchase_date'),
+            literal('Gym Membership').label('purchase_type')
+        ).where(
+            and_(
+                func.cast(FittbotGymMembership.client_id, String) == user_id,
+                FittbotGymMembership.type.notin_(['normal', 'admission_fees'])
+            )
+        )
+
+        subscription_sub = select(
+            Subscription.created_at.label('purchase_date'),
+            literal('Fittbot Subscription').label('purchase_type')
+        ).where(
+            and_(
+                Subscription.customer_id == user_id,
+                Subscription.provider.notin_(['free_trial', 'internal_manual'])
+            )
+        )
+
+        # Combine all and get the latest
+        combined = union_all(
+            daily_pass_sub,
+            session_sub,
+            membership_sub,
+            subscription_sub
+        ).subquery()
+
+        latest_stmt = select(
+            combined.c.purchase_type
+        ).order_by(
+            desc(combined.c.purchase_date)
+        ).limit(1)
+
+        latest_result = await db.execute(latest_stmt)
+        latest = latest_result.scalar_one_or_none()
+
+        return latest
+    except Exception as e:
+        print(f"[LATEST_PURCHASE_TYPE] Error for user {user_id}: {e}")
+        return None
+
+
+async def get_telecaller_total_revenue(telecaller_id: int, db: AsyncSession) -> float:
+    """
+    Calculate total revenue from all converted clients of a telecaller.
+
+    Logic:
+    1. Get all unique client_ids converted by this telecaller
+    2. Join payments -> order_items
+    3. Filter gym_id != '1'
+    4. Sum amount_minor from payments
+    5. Convert to rupees by dividing by 100
+    """
+    try:
+        # Get unique converted client_ids from both UserConversion and ClientCallFeedback
+        uc_clients = select(
+            UserConversion.client_id
+        ).where(UserConversion.telecaller_id == telecaller_id)
+
+        ccf_clients = select(
+            ClientCallFeedback.client_id
+        ).where(
+            ClientCallFeedback.executive_id == telecaller_id,
+            ClientCallFeedback.status == 'converted'
+        )
+
+        combined = union_all(uc_clients, ccf_clients).subquery()
+
+        # Get distinct client_ids
+        distinct_clients = select(
+            combined.c.client_id
+        ).distinct().subquery()
+
+        # Calculate total revenue: payments -> order_items with gym_id != '1'
+        # Join: Payment -> Order -> OrderItem
+        # Filter: gym_id != '1'
+        # Sum: amount_minor from Payment
+
+        revenue_stmt = select(
+            func.coalesce(func.sum(Payment.amount_minor), 0)
+        ).join(
+            Order, Order.id == Payment.order_id
+        ).join(
+            OrderItem, OrderItem.order_id == Order.id
+        ).join(
+            distinct_clients, distinct_clients.c.client_id == Payment.customer_id
+        ).where(
+            or_(
+                OrderItem.gym_id != '1',
+                OrderItem.gym_id.is_(None)
+            )
+        )
+
+        result = await db.execute(revenue_stmt)
+        total_amount_minor = result.scalar() or 0
+
+        # Convert from minor to major (paise to rupees)
+        # Convert to float first, then divide by 100
+        total_revenue = float(total_amount_minor) / 100
+
+        return total_revenue
+
+    except Exception as e:
+        print(f"[TELECALLER_REVENUE] Error calculating revenue for telecaller {telecaller_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return 0.0
+
+
+async def get_user_last_purchases_async(user_id: str, db: AsyncSession):
+    """
+    Get all four types of purchases for a specific user.
+    Returns the most recent purchase for each of the four types.
+    Async version for use in other endpoints.
+    """
+    now = datetime.now(IST)
+
+    purchases = {
+        "daily_pass": None,
+        "session": None,
+        "membership": None,
+        "subscription": None
+    }
+
+    # 1. Get latest Daily Pass
+    try:
+        daily_pass_stmt = select(
+            DailyPass,
+            Gym.name.label('gym_name')
+        ).outerjoin(
+            Gym, DailyPass.gym_id == cast(Gym.gym_id, String)
+        ).where(
+            DailyPass.client_id == user_id
+        ).order_by(DailyPass.created_at.desc()).limit(1)
+
+        daily_pass_result = await db.execute(daily_pass_stmt)
+        daily_pass_row = daily_pass_result.first()
+
+        if daily_pass_row:
+            dp = daily_pass_row.DailyPass
+            purchases["daily_pass"] = {
+                "type": "Daily Pass",
+                "purchase_date": dp.created_at.isoformat() if dp.created_at else None,
+                "gym_name": daily_pass_row.gym_name,
+                "days_total": dp.days_total,
+                "amount_paid": float(dp.amount_paid) if dp.amount_paid else None
+            }
+    except Exception as e:
+        print(f"[LAST_PURCHASES] Error fetching Daily Pass: {e}")
+
+    # 2. Get latest Session Purchase (only paid status)
+    try:
+        session_stmt = select(
+            SessionPurchase,
+            Gym.name.label('gym_name')
+        ).outerjoin(
+            Gym, SessionPurchase.gym_id == Gym.gym_id
+        ).where(
+            and_(
+                SessionPurchase.client_id == user_id,
+                SessionPurchase.status == "paid"
+            )
+        ).order_by(SessionPurchase.created_at.desc()).limit(1)
+
+        session_result = await db.execute(session_stmt)
+        session_row = session_result.first()
+
+        if session_row:
+            sp = session_row.SessionPurchase
+            purchases["session"] = {
+                "type": "Session",
+                "purchase_date": sp.created_at.isoformat() if sp.created_at else None,
+                "gym_name": session_row.gym_name,
+                "sessions_count": sp.sessions_count,
+                "scheduled_sessions": sp.scheduled_sessions,
+                "payable_rupees": float(sp.payable_rupees) if sp.payable_rupees else None
+            }
+    except Exception as e:
+        print(f"[LAST_PURCHASES] Error fetching Session: {e}")
+
+    # 3. Get latest Gym Membership (excluding 'normal' and 'admission_fees')
+    try:
+        membership_stmt = select(
+            FittbotGymMembership,
+            Gym.name.label('gym_name')
+        ).outerjoin(
+            Gym, func.cast(FittbotGymMembership.gym_id, String) == func.cast(Gym.gym_id, String)
+        ).where(
+            and_(
+                func.cast(FittbotGymMembership.client_id, String) == user_id,
+                FittbotGymMembership.type.notin_(['normal', 'admission_fees'])
+            )
+        ).order_by(FittbotGymMembership.purchased_at.desc()).limit(1)
+
+        membership_result = await db.execute(membership_stmt)
+        membership_row = membership_result.first()
+
+        if membership_row:
+            gm = membership_row.FittbotGymMembership
+            purchases["membership"] = {
+                "type": "Membership",
+                "purchase_date": gm.purchased_at.isoformat() if gm.purchased_at else None,
+                "gym_name": membership_row.gym_name,
+                "membership_type": gm.type,
+                "amount": float(gm.amount) if gm.amount else None
+            }
+    except Exception as e:
+        print(f"[LAST_PURCHASES] Error fetching Membership: {e}")
+
+    # 4. Get latest Subscription (excluding 'free_trial' and 'internal_manual')
+    try:
+        sub_stmt = select(
+            Subscription
+        ).where(
+            and_(
+                Subscription.customer_id == user_id,
+                Subscription.provider.notin_(['free_trial', 'internal_manual'])
+            )
+        ).order_by(Subscription.created_at.desc()).limit(1)
+
+        sub_result = await db.execute(sub_stmt)
+        sub = sub_result.scalar_one_or_none()
+
+        if sub:
+            plan_name = get_plan_name_from_product_id(sub.product_id)
+
+            purchases["subscription"] = {
+                "type": "Subscription",
+                "purchase_date": sub.created_at.isoformat() if sub.created_at else None,
+                "gym_name": None,
+                "product_id": sub.product_id,
+                "plan_name": plan_name,
+                "provider": sub.provider,
+                "status": sub.status,
+                "active_until": sub.active_until.isoformat() if sub.active_until else None,
+                "is_active": is_subscription_active(sub.active_until, now)
+            }
+    except Exception as e:
+        print(f"[LAST_PURCHASES] Error fetching Subscription: {e}")
+
+    return purchases
 
 
 @router.get("/telecallers")
 async def get_telecallers_with_conversion_count(
     db: AsyncSession = Depends(get_async_db)
 ):
-   
+
     try:
         # Get all telecallers
         telecaller_stmt = select(
@@ -28,49 +306,109 @@ async def get_telecallers_with_conversion_count(
         telecaller_result = await db.execute(telecaller_stmt)
         telecallers = telecaller_result.all()
 
-        telecaller_list = []
-        for telecaller in telecallers:
-            # Count distinct converted client_ids from both UserConversion and ClientCallFeedback
-            # Use ROW_NUMBER to get only the latest entry per client
-            uc_clients = select(
-                UserConversion.id.label('conversion_id'),
-                cast(UserConversion.client_id, String).label('client_id'),
-                UserConversion.converted_at,
-                literal('user_conversion').label('source')
-            ).where(UserConversion.telecaller_id == telecaller.id)
+        # Create a dict to store telecaller data
+        telecaller_dict = {t.id: {
+            "id": t.id,
+            "name": t.name,
+            "mobile_number": t.mobile_number,
+            "total_converted": 0,
+            "total_revenue": 0.0
+        } for t in telecallers}
 
-            ccf_clients = select(
-                ClientCallFeedback.id.label('conversion_id'),
-                cast(ClientCallFeedback.client_id, String).label('client_id'),
-                ClientCallFeedback.created_at.label('converted_at'),
-                literal('call_feedback').label('source')
+        # ========== EFFICIENT CONVERSION COUNT (Single Query) ==========
+        # Get all converted clients with their telecallers in one query
+        # From UserConversion
+        uc_all = select(
+            UserConversion.telecaller_id,
+            UserConversion.client_id,
+            UserConversion.converted_at,
+            literal('user_conversion').label('source')
+        ).where(UserConversion.telecaller_id.in_(list(telecaller_dict.keys())))
+
+        # From ClientCallFeedback
+        ccf_all = select(
+            ClientCallFeedback.executive_id.label('telecaller_id'),
+            ClientCallFeedback.client_id,
+            ClientCallFeedback.created_at.label('converted_at'),
+            literal('call_feedback').label('source')
+        ).where(
+            ClientCallFeedback.executive_id.in_(list(telecaller_dict.keys())),
+            ClientCallFeedback.status == 'converted'
+        )
+
+        combined_all = union_all(uc_all, ccf_all).subquery()
+
+        # Rank by converted_at for each client to get only the latest
+        ranked_all = select(
+            combined_all.c.telecaller_id,
+            combined_all.c.client_id,
+            func.row_number().over(
+                partition_by=combined_all.c.client_id,
+                order_by=desc(combined_all.c.converted_at)
+            ).label('rn')
+        ).subquery()
+
+        # Count latest conversions per telecaller
+        conversion_counts = select(
+            ranked_all.c.telecaller_id,
+            func.count().label('count')
+        ).where(ranked_all.c.rn == 1).group_by(ranked_all.c.telecaller_id)
+
+        conv_result = await db.execute(conversion_counts)
+        for row in conv_result.all():
+            if row.telecaller_id in telecaller_dict:
+                telecaller_dict[row.telecaller_id]["total_converted"] = row.count
+
+        # ========== EFFICIENT REVENUE CALCULATION (Same logic as individual page) ==========
+        # Use the EXACT same logic as get_telecaller_total_revenue function
+        # Get distinct client_ids for all telecallers, then join with payments
+
+        # Create combined clients with telecaller_id mapping
+        combined_for_revenue = union_all(
+            select(
+                UserConversion.telecaller_id,
+                UserConversion.client_id
+            ).where(UserConversion.telecaller_id.in_(telecaller_dict.keys())),
+            select(
+                ClientCallFeedback.executive_id.label('telecaller_id'),
+                ClientCallFeedback.client_id
             ).where(
-                ClientCallFeedback.executive_id == telecaller.id,
+                ClientCallFeedback.executive_id.in_(list(telecaller_dict.keys())),
                 ClientCallFeedback.status == 'converted'
             )
+        ).subquery()
 
-            combined = union_all(uc_clients, ccf_clients).subquery()
+        # Get distinct (telecaller_id, client_id) pairs - this handles duplicates
+        distinct_client_telecaller = select(
+            combined_for_revenue.c.telecaller_id,
+            combined_for_revenue.c.client_id
+        ).distinct().subquery()
 
-            # Use window function to rank by converted_at for each client
-            ranked = select(
-                combined.c.client_id,
-                func.row_number().over(
-                    partition_by=combined.c.client_id,
-                    order_by=desc(combined.c.converted_at)
-                ).label('rn')
-            ).subquery()
+        # Calculate revenue by joining with payments and order_items
+        # Join: distinct_client_telecaller -> Payment -> Order -> OrderItem
+        revenue_query = select(
+            distinct_client_telecaller.c.telecaller_id,
+            func.coalesce(func.sum(Payment.amount_minor), 0).label('amount_minor')
+        ).join(
+            Payment, Payment.customer_id == distinct_client_telecaller.c.client_id
+        ).join(
+            Order, Order.id == Payment.order_id
+        ).join(
+            OrderItem, OrderItem.order_id == Order.id
+        ).where(
+            or_(
+                OrderItem.gym_id != '1',
+                OrderItem.gym_id.is_(None)
+            )
+        ).group_by(distinct_client_telecaller.c.telecaller_id)
 
-            # Count only the latest (rn = 1) for each client
-            count_stmt = select(func.count()).select_from(ranked).where(ranked.c.rn == 1)
-            count_result = await db.execute(count_stmt)
-            total_converted = count_result.scalar() or 0
+        revenue_result = await db.execute(revenue_query)
+        for row in revenue_result.all():
+            if row.telecaller_id in telecaller_dict:
+                telecaller_dict[row.telecaller_id]["total_revenue"] = float(row.amount_minor) / 100
 
-            telecaller_list.append({
-                "id": telecaller.id,
-                "name": telecaller.name,
-                "mobile_number": telecaller.mobile_number,
-                "total_converted": total_converted
-            })
+        # Convert dict back to list
+        telecaller_list = list(telecaller_dict.values())
 
         return {
             "success": True,
@@ -78,11 +416,13 @@ async def get_telecallers_with_conversion_count(
                 "telecallers": telecaller_list,
                 "total": len(telecaller_list)
             },
-            "message": "Telecallers with conversion count fetched successfully"
+            "message": "Telecallers with conversion count and revenue fetched successfully"
         }
 
     except Exception as e:
-        raise Exception(f"Failed to fetch telecallers with conversion count: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise Exception(f"Failed to fetch telecallers: {str(e)}")
 
 
 @router.get("/telecallers/{telecaller_id}/converted-clients")
@@ -201,6 +541,9 @@ async def get_telecaller_converted_clients(
 
         client_list = []
         for conversion in conversions:
+            # Get the latest purchase type for this client
+            latest_purchase_type = await get_latest_purchase_type(conversion.client_id, db)
+
             client_list.append({
                 "conversion_id": conversion.conversion_id,
                 "client_id": conversion.client_id,
@@ -211,8 +554,12 @@ async def get_telecaller_converted_clients(
                 "purchased_plan": conversion.purchased_plan,
                 "converted_at": conversion.converted_at.isoformat() if conversion.converted_at else None,
                 "created_at": conversion.client_created_at.isoformat() if conversion.client_created_at else None,
-                "source": conversion.source
+                "source": conversion.source,
+                "latest_purchase_type": latest_purchase_type
             })
+
+        # Calculate total revenue from converted clients
+        total_revenue = await get_telecaller_total_revenue(telecaller_id, db)
 
         total_pages = (total_count + limit - 1) // limit
 
@@ -226,6 +573,7 @@ async def get_telecaller_converted_clients(
                 },
                 "clients": client_list,
                 "total": total_count,
+                "total_revenue": round(total_revenue, 2),
                 "page": page,
                 "limit": limit,
                 "totalPages": total_pages,

@@ -17,7 +17,7 @@ from app.models.async_database import get_async_db
 from app.fittbot_api.v1.payments.models.subscriptions import Subscription
 from app.fittbot_api.v1.payments.models.payments import Payment
 from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
-from app.models.telecaller_models import Manager, Telecaller, UserConversion
+from app.models.telecaller_models import Manager, Telecaller, UserConversion, ClientCallFeedback
 import math
 
 # IST timezone
@@ -291,6 +291,31 @@ async def get_users_overview(
                     'purchased_plan': cr.purchased_plan
                 }
 
+        # Fetch last called by details for clients on this page
+        last_called_map = {}
+        if client_ids_on_page:
+            latest_call_subq = (
+                select(
+                    ClientCallFeedback.client_id,
+                    func.max(ClientCallFeedback.id).label("max_id"),
+                )
+                .where(ClientCallFeedback.client_id.in_([int(cid) for cid in client_ids_on_page]))
+                .group_by(ClientCallFeedback.client_id)
+                .subquery()
+            )
+            last_called_result = await db.execute(
+                select(
+                    ClientCallFeedback.client_id,
+                    Telecaller.name.label("executive_name"),
+                )
+                .join(latest_call_subq, ClientCallFeedback.id == latest_call_subq.c.max_id)
+                .join(Telecaller, Telecaller.id == ClientCallFeedback.executive_id)
+            )
+            last_called_map = {
+                str(r.client_id): r.executive_name
+                for r in last_called_result.all()
+            }
+
         # Build response with conversion details (purchase details now fetched separately via /last-purchases endpoint)
         users = []
         for result in results:
@@ -313,7 +338,8 @@ async def get_users_overview(
                 "plan_name": plan_name,
                 "created_at": result.created_at.isoformat() if result.created_at else None,
                 "conversion": conversion_details_map.get(client_id_str),  # Add conversion data
-                "last_purchased_date": last_purchased_date.isoformat() if last_purchased_date else None  # Add last purchase date
+                "last_purchased_date": last_purchased_date.isoformat() if last_purchased_date else None,  # Add last purchase date
+                "last_called_by": last_called_map.get(client_id_str)  # Add last called by
             }
             users.append(user_data)
 
@@ -353,7 +379,7 @@ async def get_users_overview(
 class ConvertUserRequest(BaseModel):
     client_id: Union[str, int]  # Accept both string and int for client_id
     telecaller_id: int
-    purchased_plan: str
+    purchased_plan: Optional[str] = None  # Made optional
 
     @field_validator('client_id', mode='before')
     @classmethod
