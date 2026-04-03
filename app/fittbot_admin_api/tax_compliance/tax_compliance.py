@@ -178,8 +178,8 @@ async def get_monthly_tax_data(
         for i in range(page_size):
             month_index = start_month_offset + i
 
-            # Calculate month and year
-            month = today.month - month_index
+            # Calculate month and year starting from previous month
+            month = today.month - 1 - month_index
             year = today.year
             while month <= 0:
                 month += 12
@@ -228,6 +228,9 @@ async def get_monthly_tax_data(
 
         # Calculate total pages
         total_pages = (total_months + page_size - 1) // page_size
+
+        # Reverse to show April -> March order within each financial year
+        monthly_data.reverse()
 
         return {
             "success": True,
@@ -374,6 +377,9 @@ async def export_tax_compliance_data(
                 current = date(current.year + 1, 1, 1)
             else:
                 current = date(current.year, current.month + 1, 1)
+
+        # Reverse to match pagination display order (April -> March within each FY)
+        monthly_data.reverse()
 
         return {
             "success": True,

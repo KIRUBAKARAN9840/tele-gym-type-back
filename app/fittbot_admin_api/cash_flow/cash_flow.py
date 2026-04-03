@@ -448,11 +448,12 @@ async def get_monthly_cash_flow_data(
         monthly_data = []
 
         # Generate only the months needed for the current page
+        # Start from previous month to show complete financial years
         for i in range(page_size):
             month_index = offset + i
 
-            # Calculate the month and year
-            month = today.month - month_index
+            # Calculate the month and year starting from previous month
+            month = today.month - 1 - month_index
             year = today.year
             while month <= 0:
                 month += 12
@@ -588,6 +589,9 @@ async def get_monthly_cash_flow_data(
             }
             for ob in opening_balances
         ]
+
+        # Reverse to show April -> March order within each financial year
+        monthly_data.reverse()
 
         return {
             "success": True,
@@ -755,6 +759,9 @@ async def export_cash_flow_data(
                 current = date(current.year + 1, 1, 1)
             else:
                 current = date(current.year, current.month + 1, 1)
+
+        # Reverse to match pagination display order (April -> March within each FY)
+        monthly_data.reverse()
 
         return {
             "success": True,
