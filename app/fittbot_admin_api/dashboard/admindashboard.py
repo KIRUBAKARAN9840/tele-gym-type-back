@@ -2355,26 +2355,20 @@ async def get_purchase_analytics(
             except Exception:
                 pass
 
-        # 3. FITTBOT SUBSCRIPTION PURCHASES - Bulk aggregated queries
-        # NOTE: Skip fittbot_subscription when gym filter is applied (not gym-specific purchases)
+        # 3. NUTRITIONIST PLAN (FITTBOT SUBSCRIPTION) PURCHASES
+        # NEW LOGIC: Query payments.payments table where payment_metadata['flow'] = 'nutrition_purchase_googleplay'
+        # NOTE: Skip when gym filter is applied (not gym-specific purchases)
         if (not source or source == "fittbot_subscription") and not gym_id:
             try:
-                # First condition: Orders -> Payments
-                # Get order IDs that match subscription criteria
-                order_id_subquery = (
-                    select(Order.id)
-                    .where(Order.provider_order_id.like("sub_%"))
-                    .where(Order.status == "paid")
-                )
-
-                # Query payments with aggregations - First condition
-                payment_from_order_stmt = (
+                # Query nutritionist plan purchases with aggregations
+                nutritionist_stmt = (
                     select(
                         func.date(Payment.captured_at).label('purchase_date'),
                         func.count().label('purchase_count'),
                         func.count(distinct(Payment.customer_id)).label('unique_users')
                     )
-                    .where(Payment.order_id.in_(order_id_subquery))
+                    .where(Payment.status == "captured")
+                    .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
                     .where(func.date(Payment.captured_at) >= start_date_obj)
                     .where(func.date(Payment.captured_at) <= end_date_obj)
                 )
@@ -2383,77 +2377,18 @@ async def get_purchase_analytics(
                 if location_client_ids:
                     # Convert client_ids to strings for comparison with customer_id
                     location_customer_ids = {str(cid) for cid in location_client_ids}
-                    payment_from_order_stmt = payment_from_order_stmt.where(Payment.customer_id.in_(location_customer_ids))
+                    nutritionist_stmt = nutritionist_stmt.where(Payment.customer_id.in_(location_customer_ids))
 
-                payment_from_order_stmt = payment_from_order_stmt.group_by(func.date(Payment.captured_at))
+                nutritionist_stmt = nutritionist_stmt.group_by(func.date(Payment.captured_at))
 
-                result1 = await db.execute(payment_from_order_stmt)
-                results_from_orders = result1.all()
-
-                # Second condition: Direct Google Play payments
-                payment_direct_stmt = (
-                    select(
-                        func.date(Payment.captured_at).label('purchase_date'),
-                        func.count().label('purchase_count'),
-                        func.count(distinct(Payment.customer_id)).label('unique_users')
-                    )
-                    .where(Payment.provider == "google_play")
-                    .where(Payment.status == "captured")
-                    .where(func.date(Payment.captured_at) >= start_date_obj)
-                    .where(func.date(Payment.captured_at) <= end_date_obj)
-                )
-
-                # Apply location filter if provided
-                if location_client_ids:
-                    location_customer_ids = {str(cid) for cid in location_client_ids}
-                    payment_direct_stmt = payment_direct_stmt.where(Payment.customer_id.in_(location_customer_ids))
-
-                payment_direct_stmt = payment_direct_stmt.group_by(func.date(Payment.captured_at))
-
-                result2 = await db.execute(payment_direct_stmt)
-                direct_results = result2.all()
-
-                # Combine both results
-                combined_daily_data = {}  # date -> {"purchases": count, "users": set}
-
-                for row in results_from_orders:
-                    date_key = row.purchase_date.isoformat() if row.purchase_date else None
-                    if date_key:
-                        if date_key not in combined_daily_data:
-                            combined_daily_data[date_key] = {"purchases": 0, "users": set()}
-                        combined_daily_data[date_key]["purchases"] += row.purchase_count
-                        # Note: unique_users from aggregation is per-day, we need it properly
-                        # For total unique users, we'll need a separate query
-
-                for row in direct_results:
-                    date_key = row.purchase_date.isoformat() if row.purchase_date else None
-                    if date_key:
-                        if date_key not in combined_daily_data:
-                            combined_daily_data[date_key] = {"purchases": 0, "users": set()}
-                        combined_daily_data[date_key]["purchases"] += row.purchase_count
+                result = await db.execute(nutritionist_stmt)
+                nutritionist_results = result.all()
 
                 # Get total unique users across all dates - separate query
-                # First condition unique users
-                unique_users_from_orders_stmt = (
+                unique_users_stmt = (
                     select(func.count(distinct(Payment.customer_id)))
-                    .where(Payment.order_id.in_(order_id_subquery))
-                    .where(func.date(Payment.captured_at) >= start_date_obj)
-                    .where(func.date(Payment.captured_at) <= end_date_obj)
-                )
-
-                # Apply location filter if provided
-                if location_client_ids:
-                    location_customer_ids = {str(cid) for cid in location_client_ids}
-                    unique_users_from_orders_stmt = unique_users_from_orders_stmt.where(Payment.customer_id.in_(location_customer_ids))
-
-                result = await db.execute(unique_users_from_orders_stmt)
-                unique_users_from_orders = result.scalar() or 0
-
-                # Second condition unique users
-                unique_users_direct_stmt = (
-                    select(func.count(distinct(Payment.customer_id)))
-                    .where(Payment.provider == "google_play")
                     .where(Payment.status == "captured")
+                    .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
                     .where(func.date(Payment.captured_at) >= start_date_obj)
                     .where(func.date(Payment.captured_at) <= end_date_obj)
                 )
@@ -2461,29 +2396,31 @@ async def get_purchase_analytics(
                 # Apply location filter if provided
                 if location_client_ids:
                     location_customer_ids = {str(cid) for cid in location_client_ids}
-                    unique_users_direct_stmt = unique_users_direct_stmt.where(Payment.customer_id.in_(location_customer_ids))
+                    unique_users_stmt = unique_users_stmt.where(Payment.customer_id.in_(location_customer_ids))
 
-                result = await db.execute(unique_users_direct_stmt)
-                unique_users_direct = result.scalar() or 0
+                unique_result = await db.execute(unique_users_stmt)
+                unique_users_count = unique_result.scalar() or 0
 
-                # Calculate totals
-                total_purchases = sum(data["purchases"] for data in combined_daily_data.values())
-
-                # Build purchases over time
-                for date_key, data in sorted(combined_daily_data.items()):
-                    if date_key not in all_purchases_over_time:
-                        all_purchases_over_time[date_key] = 0
-                    all_purchases_over_time[date_key] += data["purchases"]
-                    category_breakdown["fittbot_subscription"]["purchases_over_time"].append({
-                        "date": date_key,
-                        "purchases": data["purchases"]
-                    })
+                # Calculate totals and build purchases over time
+                total_purchases = 0
+                for row in nutritionist_results:
+                    date_key = row.purchase_date.isoformat() if row.purchase_date else None
+                    if date_key:
+                        total_purchases += row.purchase_count
+                        if date_key not in all_purchases_over_time:
+                            all_purchases_over_time[date_key] = 0
+                        all_purchases_over_time[date_key] += row.purchase_count
+                        category_breakdown["fittbot_subscription"]["purchases_over_time"].append({
+                            "date": date_key,
+                            "purchases": row.purchase_count
+                        })
 
                 category_breakdown["fittbot_subscription"]["purchases"] = total_purchases
-                # Note: This may double-count users who appear in both queries, but that's acceptable for analytics
-                category_breakdown["fittbot_subscription"]["unique_users"] = unique_users_from_orders + unique_users_direct
+                category_breakdown["fittbot_subscription"]["unique_users"] = unique_users_count
 
-            except Exception:
+            except Exception as e:
+                import logging
+                logging.error(f"Purchase analytics - Nutritionist Plan error: {str(e)}")
                 pass
 
         # 4. GYM MEMBERSHIP PURCHASES - Filtered by metadata conditions
@@ -2934,45 +2871,22 @@ async def get_booking_averages(
             except Exception:
                 pass
 
-            # 4. Fittbot subscription purchases
+            # 4. Nutritionist Plan (Fittbot subscription) purchases
+            # NEW LOGIC: Query payments.payments table where payment_metadata['flow'] = 'nutrition_purchase_googleplay'
             try:
                 subscription_start = datetime.combine(start_date, datetime.min.time())
                 subscription_end = datetime.combine(end_date, datetime.min.time()).replace(hour=23, minute=59, second=59)
 
-                # First condition: Orders with sub_
-                order_id_subquery = (
-                    select(Order.id)
-                    .where(
-                        and_(
-                            Order.provider_order_id.like("sub_%"),
-                            Order.status == "paid"
-                        )
-                    )
-                )
-
-                payment_from_order_stmt = select(func.count()).where(
+                nutritionist_stmt = select(func.count()).where(
                     and_(
-                        Payment.order_id.in_(order_id_subquery),
-                        Payment.captured_at >= subscription_start,
-                        Payment.captured_at <= subscription_end
-                    )
-                )
-                result1 = await db.execute(payment_from_order_stmt)
-                sub_count = result1.scalar() or 0
-
-                # Second condition: Google Play payments
-                payment_direct_stmt = select(func.count()).where(
-                    and_(
-                        Payment.provider == "google_play",
                         Payment.status == "captured",
+                        func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay',
                         Payment.captured_at >= subscription_start,
                         Payment.captured_at <= subscription_end
                     )
                 )
-                result2 = await db.execute(payment_direct_stmt)
-                google_count = result2.scalar() or 0
-
-                result["fittbot_subscription"] = sub_count + google_count
+                query_result = await db.execute(nutritionist_stmt)
+                result["fittbot_subscription"] = query_result.scalar() or 0
             except Exception:
                 pass
 

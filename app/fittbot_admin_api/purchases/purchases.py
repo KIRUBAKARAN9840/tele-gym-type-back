@@ -2099,35 +2099,58 @@ async def get_nutritionist_plans(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
     search: Optional[str] = Query(None, description="Search by client name, email, or mobile"),
-    sort_order: str = Query("desc", description="Sort order for subscription date"),
+    sort_order: str = Query("desc", description="Sort order for purchase date"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Get list of clients with nutritionist plans (Fittbot subscriptions)
-    Includes both active and expired subscriptions.
+    Get list of nutritionist plan purchases (one-time Google Play purchases).
+    Fetches from payments.payments table where payment_metadata['flow'] = 'nutrition_purchase_googleplay'.
+
+    Optimized with:
+    - Fully async execution
+    - Backend pagination (only fetches required page data)
+    - Filter-aware querying (all filters applied in SQL)
+    - No N+1 query patterns
     """
     try:
         import math
-        today = datetime.now().date()
 
-        # Define all plan product IDs
-        gold_product_ids = ['one_month_plan:one-month-premium', 'one_month_plan:one-month-premium:rp']
-        platinum_product_ids = ['six_month_plan:six-month-premium', 'six_month_plan:six-month-premium:rp']
-        diamond_product_ids = ['twelve_month_plan:twelve-month-premium', 'twelve_month_plan:twelve-month-premium:rp']
-        all_plan_product_ids = gold_product_ids + platinum_product_ids + diamond_product_ids
-
-        # Get all unique customer_ids with nutritionist subscriptions (no active_until filter)
-        customer_ids_stmt = select(distinct(Subscription.customer_id)).where(
-            Subscription.provider.in_(['razorpay_pg', 'google_play']),
-            Subscription.status != 'pending',
-            Subscription.product_id.in_(all_plan_product_ids)
+        # Build optimized query with all filters applied in SQL
+        query = (
+            select(
+                Payment.id.label("purchase_id"),
+                Payment.customer_id.label("customer_id"),
+                Payment.captured_at.label("purchased_at"),
+                Payment.amount_minor.label("amount_minor"),
+                Payment.payment_metadata.label("payment_metadata"),
+                Client.client_id.label("client_id"),
+                Client.name.label("client_name"),
+                Client.contact.label("client_contact"),
+                Client.created_at.label("client_created_at")
+            )
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(Payment.status == "captured")
+            .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
         )
 
-        # Get the customer IDs as a list for the IN clause
-        customer_ids_result = await db.execute(customer_ids_stmt)
-        customer_ids = [row[0] for row in customer_ids_result.all()]
+        # Apply search filter in SQL
+        if search:
+            search_term = f"%{search.lower()}%"
+            query = query.where(
+                or_(
+                    func.lower(Client.name).like(search_term),
+                    Client.contact.like(search_term)
+                )
+            )
 
-        if not customer_ids:
+        # Get total count with filters applied
+        count_subquery = query.subquery()
+        count_stmt = select(func.count()).select_from(count_subquery)
+        count_result = await db.execute(count_stmt)
+        total_count = count_result.scalar() or 0
+
+        if total_count == 0:
             return {
                 "success": True,
                 "data": {
@@ -2142,109 +2165,50 @@ async def get_nutritionist_plans(
                 "message": "Nutritionist plans fetched successfully"
             }
 
-        # Subquery to get the most recent subscription for each customer
-        most_recent_subq = (
-            select(
-                Subscription.customer_id,
-                func.max(Subscription.active_from).label('max_active_from')
-            )
-            .where(Subscription.customer_id.in_(customer_ids))
-            .where(Subscription.provider.in_(['razorpay_pg', 'google_play']))
-            .where(Subscription.status != 'pending')
-            .where(Subscription.product_id.in_(all_plan_product_ids))
-            .group_by(Subscription.customer_id)
-            .subquery()
-        )
-
-        # Main query to get subscription details
-        stmt = (
-            select(
-                Subscription.customer_id,
-                Subscription.provider,
-                Subscription.active_from,
-                Subscription.active_until,
-                Client.client_id,
-                Client.name,
-                Client.email,
-                Client.contact,
-                Client.gender,
-                Client.created_at.label('client_created_at'),
-                Gym.gym_id,
-                Gym.name.label('gym_name'),
-                Gym.logo,
-                Gym.location,
-                Gym.city
-            )
-            .select_from(Subscription)
-            .join(most_recent_subq, (Subscription.customer_id == most_recent_subq.c.customer_id) & (Subscription.active_from == most_recent_subq.c.max_active_from))
-            .outerjoin(Client, Client.client_id == Subscription.customer_id)
-            .outerjoin(Gym, Gym.gym_id == Client.gym_id)
-        )
-
-        # Apply search filter
-        if search:
-            search_term = f"%{search.lower()}%"
-            stmt = stmt.where(
-                or_(
-                    func.lower(Client.name).like(search_term),
-                    func.lower(Client.email).like(search_term),
-                    Client.contact.like(search_term),
-                    func.lower(Gym.name).like(search_term)
-                )
-            )
-
-        # Apply sorting
+        # Apply sorting in SQL
         if sort_order == "asc":
-            stmt = stmt.order_by(asc(Subscription.active_from))
+            query = query.order_by(asc(Payment.captured_at))
         else:
-            stmt = stmt.order_by(desc(Subscription.active_from))
+            query = query.order_by(desc(Payment.captured_at))
 
-        # Get total count before pagination
-        count_subquery = stmt.subquery()
-        count_stmt = select(func.count()).select_from(count_subquery)
-        count_result = await db.execute(count_stmt)
-        total_count = count_result.scalar() or 0
-
-        # Apply pagination
+        # Apply pagination in SQL (backend pagination)
         offset = (page - 1) * limit
-        stmt = stmt.offset(offset).limit(limit)
+        query = query.offset(offset).limit(limit)
 
-        # Execute query
-        result = await db.execute(stmt)
-        users = result.all()
+        # Execute query (single query - no N+1)
+        result = await db.execute(query)
+        rows = result.all()
 
-        # Format response
+        # Format response with required columns
         nutritionist_plan_users = []
-        for row in users:
-            # Skip entry if client not found in clients table
-            if not row.client_id:
-                continue
+        for row in rows:
+            # Extract booked_date from payment_metadata
+            booked_date = None
+            if row.payment_metadata and isinstance(row.payment_metadata, dict):
+                booking_id = row.payment_metadata.get("booking_id")
+                if booking_id:
+                    # Format as date if it's a timestamp
+                    try:
+                        booked_date = datetime.fromisoformat(booking_id.replace('Z', '+00:00'))
+                        booked_date = booked_date.strftime("%Y-%m-%d")
+                    except:
+                        booked_date = str(booking_id)
 
-            # Calculate days left in subscription
-            active_until_date = row.active_until.date() if hasattr(row.active_until, 'date') else row.active_until
-            days_left = (active_until_date - today).days if active_until_date else 0
-
-            # Format provider name for display
-            provider_display = "Razorpay" if row.provider == 'razorpay_pg' else "Google Play"
+            # Format dates and amounts
+            purchased_date = row.purchased_at.strftime("%Y-%m-%d") if row.purchased_at else "N/A"
+            amount_rupees = float(row.amount_minor / 100) if row.amount_minor else 0.0
 
             user_data = {
-                "subscription_id": row.customer_id,
+                "id": row.purchase_id,
                 "customer_id": row.customer_id,
                 "client_id": row.client_id,
-                "provider": row.provider,
-                "provider_display": provider_display,
-                "name": row.name or "N/A",
-                "email": row.email or "N/A",
-                "mobile": row.contact or "N/A",
-                "gender": row.gender,
-                "gym_id": row.gym_id,
-                "gym_name": row.gym_name or "N/A",
-                "gym_location": row.location or row.city or "N/A",
-                "gym_logo": row.logo,
-                "subscription_start_date": row.active_from.isoformat() if row.active_from else None,
-                "subscription_end_date": row.active_until.isoformat() if row.active_until else None,
-                "days_left": days_left,
-                "client_joined_date": row.client_created_at.isoformat() if row.client_created_at else None
+                "client_name": row.client_name or "N/A",
+                "mobile": row.client_contact or "N/A",
+                "gym_name": "N/A",
+                "gym_location": "N/A",
+                "purchased_date": purchased_date,
+                "booked_date": booked_date or "N/A",
+                "amount": amount_rupees
             }
             nutritionist_plan_users.append(user_data)
 
@@ -2282,95 +2246,40 @@ async def export_nutritionist_plans(
 ):
     """
     Export nutritionist plans to Excel file.
-    Returns all nutritionist subscriptions (including expired) without pagination.
+    Returns all nutritionist plan purchases (one-time Google Play purchases) without pagination.
     """
     try:
-        today = datetime.now().date()
-
-        # Define all plan product IDs
-        gold_product_ids = ['one_month_plan:one-month-premium', 'one_month_plan:one-month-premium:rp']
-        platinum_product_ids = ['six_month_plan:six-month-premium', 'six_month_plan:six-month-premium:rp']
-        diamond_product_ids = ['twelve_month_plan:twelve-month-premium', 'twelve_month_plan:twelve-month-premium:rp']
-        all_plan_product_ids = gold_product_ids + platinum_product_ids + diamond_product_ids
-
-        # Get all unique customer_ids with nutritionist subscriptions (no active_until filter)
-        customer_ids_stmt = select(distinct(Subscription.customer_id)).where(
-            Subscription.provider.in_(['razorpay_pg', 'google_play']),
-            Subscription.status != 'pending',
-            Subscription.product_id.in_(all_plan_product_ids)
-        )
-
-        # Get the customer IDs as a list for the IN clause
-        customer_ids_result = await db.execute(customer_ids_stmt)
-        customer_ids = [row[0] for row in customer_ids_result.all()]
-
-        if not customer_ids:
-            # Return empty Excel file
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Nutritionist Plans"
-
-            headers = ["Client Name", "Email", "Mobile", "Gym Name", "Provider", "Start Date", "End Date", "Days Left"]
-            ws.append(headers)
-
-            output = io.BytesIO()
-            wb.save(output)
-            output.seek(0)
-
-            return StreamingResponse(
-                output,
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                headers={
-                    "Content-Disposition": "attachment; filename=nutritionist_plans.xlsx"
-                }
-            )
-
-        # Subquery to get the most recent subscription for each customer
-        most_recent_subq = (
+        # Build optimized query for nutritionist plan purchases
+        query = (
             select(
-                Subscription.customer_id,
-                func.max(Subscription.active_from).label('max_active_from')
+                Payment.id.label("purchase_id"),
+                Payment.customer_id.label("customer_id"),
+                Payment.captured_at.label("purchased_at"),
+                Payment.amount_minor.label("amount_minor"),
+                Payment.payment_metadata.label("payment_metadata"),
+                Client.client_id.label("client_id"),
+                Client.name.label("client_name"),
+                Client.contact.label("client_contact"),
+                Client.created_at.label("client_created_at")
             )
-            .where(Subscription.customer_id.in_(customer_ids))
-            .where(Subscription.provider.in_(['razorpay_pg', 'google_play']))
-            .where(Subscription.status != 'pending')
-            .where(Subscription.product_id.in_(all_plan_product_ids))
-            .group_by(Subscription.customer_id)
-            .subquery()
-        )
-
-        # Main query to get subscription details (no pagination for export)
-        stmt = (
-            select(
-                Subscription.customer_id,
-                Subscription.provider,
-                Subscription.active_from,
-                Subscription.active_until,
-                Client.name,
-                Client.email,
-                Client.contact,
-                Gym.name.label('gym_name'),
-                Gym.location,
-                Gym.city
-            )
-            .select_from(Subscription)
-            .join(most_recent_subq, (Subscription.customer_id == most_recent_subq.c.customer_id) & (Subscription.active_from == most_recent_subq.c.max_active_from))
-            .outerjoin(Client, Client.client_id == Subscription.customer_id)
-            .outerjoin(Gym, Gym.gym_id == Client.gym_id)
-            .order_by(desc(Subscription.active_from))
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(Payment.status == "captured")
+            .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
+            .order_by(desc(Payment.captured_at))
         )
 
         # Execute query
-        result = await db.execute(stmt)
-        users = result.all()
+        result = await db.execute(query)
+        rows = result.all()
 
         # Create Excel workbook
         wb = Workbook()
         ws = wb.active
         ws.title = "Nutritionist Plans"
 
-        # Write header
-        headers = ["Client Name", "Email", "Mobile", "Gym Name", "Location", "Provider", "Start Date", "End Date", "Days Left"]
+        # Write NEW header - matching the requirements
+        headers = ["Client Name", "Contact", "Gym Name", "Purchased Date", "Booked Date", "Amount"]
         ws.append(headers)
 
         # Style the header row
@@ -2381,35 +2290,41 @@ async def export_nutritionist_plans(
             cell.font = header_font
             cell.fill = header_fill
 
-        # Helper functions for formatting
+        # Helper function to format date
         def format_date(date_obj):
             if not date_obj:
                 return "N/A"
             return date_obj.strftime("%Y-%m-%d")
 
+        # Helper function to extract booked_date from metadata
+        def get_booked_date(payment_metadata):
+            if not payment_metadata or not isinstance(payment_metadata, dict):
+                return "N/A"
+            booking_id = payment_metadata.get("booking_id")
+            if booking_id:
+                # Try to parse as datetime
+                try:
+                    booked_date = datetime.fromisoformat(booking_id.replace('Z', '+00:00'))
+                    return booked_date.strftime("%Y-%m-%d")
+                except:
+                    return str(booking_id)
+            return "N/A"
+
         # Write data rows
-        for row in users:
-            # Skip entry if client not found in clients table
-            if not row.client_id:
-                continue
+        for row in rows:
+            # Extract booked date from payment_metadata
+            booked_date = get_booked_date(row.payment_metadata)
 
-            # Calculate days left in subscription
-            active_until_date = row.active_until.date() if hasattr(row.active_until, 'date') else row.active_until
-            days_left = (active_until_date - today).days if active_until_date else 0
-
-            # Format provider name for display
-            provider_display = "Razorpay" if row.provider == 'razorpay_pg' else "Google Play"
+            # Format amount in rupees
+            amount_rupees = float(row.amount_minor / 100) if row.amount_minor else 0.0
 
             ws.append([
-                row.name or "N/A",
-                row.email or "N/A",
-                row.contact or "N/A",
-                row.gym_name or "N/A",
-                row.location or row.city or "N/A",
-                provider_display,
-                format_date(row.active_from),
-                format_date(row.active_until),
-                f"{days_left} days" if days_left >= 0 else "Expired"
+                row.client_name or "N/A",
+                row.client_contact or "N/A",
+                "N/A",  # Gym Name - not available for nutritionist plans
+                format_date(row.purchased_at),
+                booked_date,
+                f"{amount_rupees:.2f}"
             ])
 
         # Auto-adjust column widths
