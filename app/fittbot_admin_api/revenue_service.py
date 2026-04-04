@@ -1457,3 +1457,37 @@ def calculate_nutritionist_plan_net_revenue(revenue_in_paise: int) -> dict:
         "gst": int(gst),
         "net_revenue": int(net_revenue)
     }
+
+
+def calculate_ai_credits_net_revenue(revenue_in_paise: int) -> dict:
+    """
+    Calculate Net Revenue and GST for AI Credits.
+
+    AI Credits revenue is inclusive of GST, so we use reverse GST calculation:
+    - Net before GST = Revenue / 1.18
+    - GST = Net before GST × 0.18
+    - Net Revenue = Net before GST - GST
+
+    Args:
+        revenue_in_paise: Revenue amount in PAISA (minor units)
+
+    Returns:
+        Dictionary with revenue, gst, and net_revenue in PAISA (int)
+    """
+    from decimal import Decimal
+
+    GST_RATE = Decimal("0.18")  # 18% GST
+
+    # Convert to Decimal for precise calculation
+    revenue = Decimal(str(revenue_in_paise))
+
+    # Reverse GST calculation (amount is inclusive of GST)
+    net_before_gst = revenue / Decimal("1.18")
+    gst = net_before_gst * GST_RATE
+    net_revenue = net_before_gst - gst
+
+    return {
+        "revenue": int(revenue),
+        "gst": int(gst),
+        "net_revenue": int(net_revenue)
+    }

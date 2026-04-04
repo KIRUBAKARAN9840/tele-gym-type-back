@@ -15,7 +15,8 @@ from app.models.adminmodels import TaxCompliance
 from app.fittbot_admin_api.revenue_service import (
     get_revenue_breakdown,
     paise_to_rupees,
-    calculate_nutritionist_plan_net_revenue
+    calculate_nutritionist_plan_net_revenue,
+    calculate_ai_credits_net_revenue
 )
 
 router = APIRouter(prefix="/api/admin/tax-compliance", tags=["TaxCompliance"])
@@ -92,11 +93,16 @@ async def get_monthly_gst_tds_optimized(
     sessions_revenue = revenue_data.sessions
     fittbot_subscription_revenue = revenue_data.fittbot_subscription
     gym_membership_revenue = revenue_data.gym_membership
+    ai_credits_revenue = revenue_data.ai_credits
 
     # Calculate GST Collected
     # Fymble Subscription: Using centralized Nutritionist Plan GST calculation
     nutritionist_calc = calculate_nutritionist_plan_net_revenue(int(fittbot_subscription_revenue))
     fittbot_subscription_gst = float(nutritionist_calc["gst"])
+
+    # AI Credits: Using centralized AI Credits GST calculation
+    ai_credits_calc = calculate_ai_credits_net_revenue(int(ai_credits_revenue))
+    ai_credits_gst = float(ai_credits_calc["gst"])
 
     # Gym Membership: 18% GST on commission only
     membership_comm, _ = calculate_membership_payout_deductions(gym_membership_revenue)
@@ -113,6 +119,7 @@ async def get_monthly_gst_tds_optimized(
     # Total GST Collected (in rupees, convert from minor units)
     total_gst_collected = (
         fittbot_subscription_gst +
+        ai_credits_gst +
         gym_membership_gst +
         daily_pass_gst +
         sessions_gst

@@ -15,7 +15,8 @@ from app.fittbot_admin_api.revenue_service import (
     get_revenue_breakdown,
     paise_to_rupees,
     paise_to_rupees_float,
-    calculate_nutritionist_plan_net_revenue
+    calculate_nutritionist_plan_net_revenue,
+    calculate_ai_credits_net_revenue
 )
 
 router = APIRouter(prefix="/api/admin/financials", tags=["AdminFinancials"])
@@ -169,18 +170,20 @@ def calculate_net_revenue(
     gym_membership_revenue,
     daily_pass_revenue,
     sessions_revenue,
+    ai_credits_revenue,
     membership_comm,
     daily_pass_comm,
     sessions_comm
 ):
     """
-    Calculate Net Revenue for all four income categories.
+    Calculate Net Revenue for all income categories.
 
     Logic:
-    1. Fymble Subscription: Deduct 18% GST from total revenue
-    2. Gym Membership: Deduct 18% GST on platform commission only
-    3. Daily Pass: Deduct 18% GST on platform commission only
-    4. Session: Deduct 18% GST on platform commission only
+    1. Fymble Subscription: Deduct 18% GST from total revenue (reverse GST)
+    2. AI Credits: Deduct 18% GST from total revenue (reverse GST)
+    3. Gym Membership: Deduct 18% GST on platform commission only
+    4. Daily Pass: Deduct 18% GST on platform commission only
+    5. Session: Deduct 18% GST on platform commission only
 
     Returns:
         - Individual net revenue for each category
@@ -192,6 +195,7 @@ def calculate_net_revenue(
     gym_membership_revenue = Decimal(str(gym_membership_revenue))
     daily_pass_revenue = Decimal(str(daily_pass_revenue))
     sessions_revenue = Decimal(str(sessions_revenue))
+    ai_credits_revenue = Decimal(str(ai_credits_revenue))
     membership_comm = Decimal(str(membership_comm))
     daily_pass_comm = Decimal(str(daily_pass_comm))
     sessions_comm = Decimal(str(sessions_comm))
@@ -202,20 +206,27 @@ def calculate_net_revenue(
     fittbot_subscription_gst = Decimal(str(nutritionist_calc["gst"]))
     fittbot_subscription_net = Decimal(str(nutritionist_calc["net_revenue"]))
 
-    # 2. Gym Membership Net Revenue
+    # 2. AI Credits Net Revenue
+    # Use centralized AI Credits GST calculation from revenue service
+    ai_credits_calc = calculate_ai_credits_net_revenue(int(ai_credits_revenue))
+    ai_credits_gst = Decimal(str(ai_credits_calc["gst"]))
+    ai_credits_net = Decimal(str(ai_credits_calc["net_revenue"]))
+
+    # 3. Gym Membership Net Revenue
     gym_membership_gst_on_comm = membership_comm * GST_RATE
     gym_membership_net = gym_membership_revenue - gym_membership_gst_on_comm
 
-    # 3. Daily Pass Net Revenue
+    # 4. Daily Pass Net Revenue
     daily_pass_gst_on_comm = daily_pass_comm * GST_RATE
     daily_pass_net = daily_pass_revenue - daily_pass_gst_on_comm
 
-    # 4. Session Net Revenue
+    # 5. Session Net Revenue
     sessions_gst_on_comm = sessions_comm * GST_RATE
     sessions_net = sessions_revenue - sessions_gst_on_comm
 
     total_net_revenue = (
         fittbot_subscription_net +
+        ai_credits_net +
         gym_membership_net +
         daily_pass_net +
         sessions_net
@@ -226,6 +237,11 @@ def calculate_net_revenue(
             "revenue": float(fittbot_subscription_revenue),
             "gst": float(fittbot_subscription_gst),
             "net_revenue": float(fittbot_subscription_net)
+        },
+        "ai_credits": {
+            "revenue": float(ai_credits_revenue),
+            "gst": float(ai_credits_gst),
+            "net_revenue": float(ai_credits_net)
         },
         "gym_membership": {
             "revenue": float(gym_membership_revenue),
@@ -287,6 +303,7 @@ async def get_financials_overview(
         sessions_revenue = revenue_data.sessions
         gym_membership_revenue = revenue_data.gym_membership
         fittbot_subscription_revenue = revenue_data.fittbot_subscription
+        ai_credits_revenue = revenue_data.ai_credits
 
         total_revenue = revenue_data.total_revenue
 
@@ -309,6 +326,7 @@ async def get_financials_overview(
             gym_membership_revenue=gym_membership_revenue,
             daily_pass_revenue=daily_pass_revenue,
             sessions_revenue=sessions_revenue,
+            ai_credits_revenue=ai_credits_revenue,
             membership_comm=membership_comm,
             daily_pass_comm=daily_pass_comm,
             sessions_comm=sessions_comm
@@ -316,11 +334,12 @@ async def get_financials_overview(
 
         # Calculate Gross Profit
         fittbot_subscription_gross_profit = net_revenue_data["fittbot_subscription"]["net_revenue"]
+        ai_credits_gross_profit = net_revenue_data["ai_credits"]["net_revenue"]
         gym_membership_gross_profit = membership_comm - net_revenue_data["gym_membership"]["gst_on_comm"]
         daily_pass_gross_profit = daily_pass_comm - net_revenue_data["daily_pass"]["gst_on_comm"]
         sessions_gross_profit = sessions_comm - net_revenue_data["sessions"]["gst_on_comm"]
 
-        total_gross_profit = fittbot_subscription_gross_profit + gym_membership_gross_profit + daily_pass_gross_profit + sessions_gross_profit
+        total_gross_profit = fittbot_subscription_gross_profit + ai_credits_gross_profit + gym_membership_gross_profit + daily_pass_gross_profit + sessions_gross_profit
 
         # Get Total Expenses
         total_expenses = await get_total_expenses(db, start_date_obj, end_date_obj)
@@ -347,6 +366,7 @@ async def get_financials_overview(
                     "sessions": paise_to_rupees(sessions_revenue),
                     "fittbot_subscription": paise_to_rupees(fittbot_subscription_revenue),
                     "gym_membership": paise_to_rupees(gym_membership_revenue),
+                    "ai_credits": paise_to_rupees(ai_credits_revenue),
                     "total": paise_to_rupees(total_revenue)
                 },
                 "payoutBreakdown": {
@@ -390,6 +410,11 @@ async def get_financials_overview(
                         "gst": paise_to_rupees(net_revenue_data["fittbot_subscription"]["gst"]),
                         "net_revenue": paise_to_rupees(net_revenue_data["fittbot_subscription"]["net_revenue"])
                     },
+                    "ai_credits": {
+                        "revenue": paise_to_rupees(net_revenue_data["ai_credits"]["revenue"]),
+                        "gst": paise_to_rupees(net_revenue_data["ai_credits"]["gst"]),
+                        "net_revenue": paise_to_rupees(net_revenue_data["ai_credits"]["net_revenue"])
+                    },
                     "gym_membership": {
                         "revenue": paise_to_rupees(net_revenue_data["gym_membership"]["revenue"]),
                         "commission": paise_to_rupees(net_revenue_data["gym_membership"]["commission"]),
@@ -415,6 +440,11 @@ async def get_financials_overview(
                         "revenue": paise_to_rupees(net_revenue_data["fittbot_subscription"]["revenue"]),
                         "gst": paise_to_rupees(net_revenue_data["fittbot_subscription"]["gst"]),
                         "gross_profit": paise_to_rupees(fittbot_subscription_gross_profit)
+                    },
+                    "ai_credits": {
+                        "revenue": paise_to_rupees(net_revenue_data["ai_credits"]["revenue"]),
+                        "gst": paise_to_rupees(net_revenue_data["ai_credits"]["gst"]),
+                        "gross_profit": paise_to_rupees(ai_credits_gross_profit)
                     },
                     "gym_membership": {
                         "revenue": paise_to_rupees(net_revenue_data["gym_membership"]["revenue"]),
