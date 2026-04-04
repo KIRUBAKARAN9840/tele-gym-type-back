@@ -1036,67 +1036,37 @@ async def get_revenue_analytics(
 
 @router.get("/recurring-subscribers")
 async def get_recurring_subscribers(db: AsyncSession = Depends(get_async_db)):
-
+    """
+    Get count of recurring subscribers.
+    NEW LOGIC: Returns clients who have purchased Nutritionist Plan more than once.
+    Queries payments.payments where payment_metadata['flow'] = 'nutrition_purchase_googleplay'
+    """
     try:
         from collections import defaultdict
 
-        # Dictionary to store subscription count per customer_id
-        customer_subscription_count = defaultdict(int)
+        # Dictionary to store nutritionist plan purchase count per customer_id
+        customer_purchase_count = defaultdict(int)
 
-        # FIRST CONDITION: Orders table -> Payments table
-        # Step 1: Query orders table with filters
-        # - customer_id (we'll get all and group by customer)
-        # - status = 'paid'
-        # - provider_order_id starts with 'sub_'
-        order_stmt = (
-            select(Order.customer_id, Order.id)
-            .where(Order.provider_order_id.like("sub_%"))
-            .where(Order.status == "paid")
-        )
-
-        order_result = await db.execute(order_stmt)
-        orders = order_result.all()
-
-        # Step 2: Get order IDs and query payments table
-        # Match payment.order_id with order.id
-        # Multiple payment entries for same order_id = multiple subscriptions
-        if orders:
-            order_ids = [order.id for order in orders]
-
-            # Query payments table using the order IDs
-            payment_from_order_stmt = (
-                select(Payment.customer_id, Payment.id)
-                .where(Payment.order_id.in_(order_ids))
-            )
-
-            payment_from_order_result = await db.execute(payment_from_order_stmt)
-            payments_from_orders = payment_from_order_result.all()
-
-            # Count each payment entry as a subscription
-            for payment in payments_from_orders:
-                customer_subscription_count[payment.customer_id] += 1
-
-        # SECOND CONDITION: Direct query on payments table
+        # NEW LOGIC: Query payments table for nutritionist plan purchases
         # Filters:
-        # - customer_id (client id)
-        # - provider = 'google_play'
+        # - payment_metadata['flow'] = 'nutrition_purchase_googleplay'
         # - status = 'captured'
         payment_stmt = (
-            select(Payment.customer_id, Payment.id)
-            .where(Payment.provider == "google_play")
+            select(Payment.customer_id)
             .where(Payment.status == "captured")
+            .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
         )
 
         payment_result = await db.execute(payment_stmt)
         payments = payment_result.all()
 
-        # Count each payment as a subscription
+        # Count each payment as a nutritionist plan purchase
         for payment in payments:
-            customer_subscription_count[payment.customer_id] += 1
+            customer_purchase_count[payment.customer_id] += 1
 
-        # Filter only customers with more than 1 subscription
+        # Filter only customers with more than 1 nutritionist plan purchase
         recurring_customer_ids = [
-            customer_id for customer_id, count in customer_subscription_count.items()
+            customer_id for customer_id, count in customer_purchase_count.items()
             if count > 1
         ]
 
@@ -1136,7 +1106,8 @@ async def get_recurring_subscribers_details(
 ):
     """
     Get detailed list of recurring subscribers with pagination.
-    Returns clients who have purchased Fittbot subscription more than once.
+    Returns clients who have purchased Nutritionist Plan (Fittbot subscription) more than once.
+    NEW LOGIC: Query payments.payments where payment_metadata['flow'] = 'nutrition_purchase_googleplay'
     """
     try:
         from collections import defaultdict
@@ -1145,61 +1116,21 @@ async def get_recurring_subscribers_details(
         # Dictionary to store subscription info per customer_id
         customer_subscriptions = defaultdict(lambda: {"count": 0, "payments": []})
 
-        # FIRST CONDITION: Orders table -> Payments table
-        # Step 1: Query orders table with filters
-        # - customer_id
-        # - status = 'paid'
-        # - provider_order_id starts with 'sub_'
-        order_stmt = (
-            select(Order.customer_id, Order.id)
-            .where(Order.provider_order_id.like("sub_%"))
-            .where(Order.status == "paid")
-        )
-
-        order_result = await db.execute(order_stmt)
-        orders = order_result.all()
-
-        # Step 2: Get order IDs and query payments table
-        # Match payment.order_id with order.id
-        # Multiple payment entries for same order_id = multiple subscriptions
-        if orders:
-            order_ids = [order.id for order in orders]
-
-            # Query payments table using the order IDs
-            # Extract: amount_minor, captured_at
-            payment_from_order_stmt = (
-                select(Payment.customer_id, Payment.id, Payment.amount_minor, Payment.captured_at)
-                .where(Payment.order_id.in_(order_ids))
-            )
-
-            payment_from_order_result = await db.execute(payment_from_order_stmt)
-            payments_from_orders = payment_from_order_result.all()
-
-            # Count each payment entry as a subscription
-            for payment in payments_from_orders:
-                customer_subscriptions[payment.customer_id]["count"] += 1
-                customer_subscriptions[payment.customer_id]["payments"].append({
-                    "id": payment.id,
-                    "date": payment.captured_at.isoformat() if payment.captured_at else None,
-                    "amount": payment.amount_minor
-                })
-
-        # SECOND CONDITION: Direct query on payments table
+        # NEW LOGIC: Query payments table for nutritionist plan purchases
         # Filters:
-        # - customer_id (client id)
-        # - provider = 'google_play'
+        # - payment_metadata['flow'] = 'nutrition_purchase_googleplay'
         # - status = 'captured'
-        # Extract: amount_minor, captured_at
+        # Extract: customer_id, id, amount_minor, captured_at
         payment_stmt = (
             select(Payment.customer_id, Payment.id, Payment.amount_minor, Payment.captured_at)
-            .where(Payment.provider == "google_play")
             .where(Payment.status == "captured")
+            .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
         )
 
         payment_result = await db.execute(payment_stmt)
         payments = payment_result.all()
 
-        # Count each payment as a subscription
+        # Count each payment as a nutritionist plan purchase
         for payment in payments:
             customer_subscriptions[payment.customer_id]["count"] += 1
             customer_subscriptions[payment.customer_id]["payments"].append({
@@ -1208,7 +1139,7 @@ async def get_recurring_subscribers_details(
                 "amount": payment.amount_minor
             })
 
-        # Filter only customers with more than 1 subscription
+        # Filter only customers with more than 1 nutritionist plan purchase
         recurring_customers = {
             customer_id: data
             for customer_id, data in customer_subscriptions.items()

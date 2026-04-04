@@ -2374,85 +2374,43 @@ async def get_user_fittbot_subscription(
     user_id: int,
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Get Fittbot subscription for a specific user using the same logic as recurring-subscribers"""
+    """
+    Get Nutritionist Plan purchases for a specific user.
+    NEW LOGIC: Query payments.payments where payment_metadata['flow'] = 'nutrition_purchase_googleplay'
+    """
     try:
         subscriptions = []
 
-        # FIRST CONDITION: Orders table -> Payments table
-        # Step 1: Query orders table with filters
-        # - customer_id = user_id
-        # - status = 'paid'
-        # - provider_order_id starts with 'sub_'
-        order_stmt = (
-            select(Order.customer_id, Order.id)
-            .where(Order.customer_id == str(user_id))
-            .where(Order.provider_order_id.like("sub_%"))
-            .where(Order.status == "paid")
-        )
-
-        order_result = await db.execute(order_stmt)
-        orders = order_result.all()
-
-        # Step 2: Get order IDs and query payments table
-        # Match payment.order_id with order.id
-        # Multiple payment entries for same order_id = multiple subscriptions
-        if orders:
-            order_ids = [order.id for order in orders]
-
-            # Query payments table using the order IDs
-            # Extract: amount_minor, captured_at
-            payment_from_order_stmt = (
-                select(Payment.customer_id, Payment.id, Payment.amount_minor, Payment.captured_at, Payment.order_id)
-                .where(Payment.customer_id == str(user_id))
-                .where(Payment.order_id.in_(order_ids))
-            )
-
-            payment_from_order_result = await db.execute(payment_from_order_stmt)
-            payments_from_orders = payment_from_order_result.all()
-
-            for payment in payments_from_orders:
-                subscriptions.append({
-                    "id": payment.id,
-                    "order_id": payment.order_id,
-                    "customer_id": payment.customer_id,
-                    "amount": payment.amount_minor,  # Using amount_minor from payments table
-                    "captured_at": payment.captured_at.isoformat() if payment.captured_at else None,
-                })
-
-        # SECOND CONDITION: Direct query on payments table
+        # NEW LOGIC: Query payments table for nutritionist plan purchases
         # Filters:
         # - customer_id = user_id
-        # - provider = 'google_play'
+        # - payment_metadata['flow'] = 'nutrition_purchase_googleplay'
         # - status = 'captured'
-        # Extract: amount_minor, captured_at
+        # Extract: id, amount_minor, captured_at
         payment_stmt = (
             select(Payment.customer_id, Payment.id, Payment.amount_minor, Payment.captured_at, Payment.order_id)
             .where(Payment.customer_id == str(user_id))
-            .where(Payment.provider == "google_play")
             .where(Payment.status == "captured")
+            .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
         )
 
         payment_result = await db.execute(payment_stmt)
         payments = payment_result.all()
 
-        # Deduplicate by payment ID and add
-        existing_payment_ids = {sub["id"] for sub in subscriptions}
-
         for payment in payments:
-            if payment.id not in existing_payment_ids:
-                subscriptions.append({
-                    "id": payment.id,
-                    "order_id": payment.order_id,
-                    "customer_id": payment.customer_id,
-                    "amount": payment.amount_minor,  # Using amount_minor from payments table
-                    "captured_at": payment.captured_at.isoformat() if payment.captured_at else None,
-                })
+            subscriptions.append({
+                "id": payment.id,
+                "order_id": payment.order_id,
+                "customer_id": payment.customer_id,
+                "amount": payment.amount_minor,  # Using amount_minor from payments table
+                "captured_at": payment.captured_at.isoformat() if payment.captured_at else None,
+            })
 
         if not subscriptions:
             return {
                 "success": True,
                 "data": [],
-                "message": "No Fittbot subscription found for this user",
+                "message": "No Nutrition Plan found for this user",
                 "total": 0
             }
 
@@ -2463,7 +2421,7 @@ async def get_user_fittbot_subscription(
             "success": True,
             "data": subscriptions,
             "total": len(subscriptions),
-            "message": "Fittbot subscription fetched successfully"
+            "message": "Nutrition Plan fetched successfully"
         }
 
     except Exception as e:
@@ -2472,7 +2430,7 @@ async def get_user_fittbot_subscription(
         return {
             "success": False,
             "data": [],
-            "message": f"Error fetching Fittbot subscription: {str(e)}",
+            "message": f"Error fetching Nutrition Plan: {str(e)}",
             "total": 0
         }
 
