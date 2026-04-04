@@ -14,7 +14,8 @@ from app.models.adminmodels import Expenses
 from app.fittbot_admin_api.revenue_service import (
     get_revenue_breakdown,
     paise_to_rupees,
-    paise_to_rupees_float
+    paise_to_rupees_float,
+    calculate_nutritionist_plan_net_revenue
 )
 
 router = APIRouter(prefix="/api/admin/financials", tags=["AdminFinancials"])
@@ -196,13 +197,10 @@ def calculate_net_revenue(
     sessions_comm = Decimal(str(sessions_comm))
 
     # 1. Fymble Subscription Net Revenue
-    # Reverse GST calculation: amount is inclusive of GST
-    # Net before GST = Amount / 1.18
-    # GST = Net before GST × 0.18
-    # Net Revenue = Net before GST - GST
-    net_before_gst = fittbot_subscription_revenue / Decimal("1.18")
-    fittbot_subscription_gst = net_before_gst * GST_RATE
-    fittbot_subscription_net = net_before_gst - fittbot_subscription_gst
+    # Use centralized Nutritionist Plan GST calculation from revenue service
+    nutritionist_calc = calculate_nutritionist_plan_net_revenue(int(fittbot_subscription_revenue))
+    fittbot_subscription_gst = Decimal(str(nutritionist_calc["gst"]))
+    fittbot_subscription_net = Decimal(str(nutritionist_calc["net_revenue"]))
 
     # 2. Gym Membership Net Revenue
     gym_membership_gst_on_comm = membership_comm * GST_RATE

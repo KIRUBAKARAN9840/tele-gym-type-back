@@ -13,7 +13,8 @@ from app.models.adminmodels import Expenses, OpeningBalance
 # Import centralized revenue service
 from app.fittbot_admin_api.revenue_service import (
     get_revenue_breakdown,
-    paise_to_rupees
+    paise_to_rupees,
+    calculate_nutritionist_plan_net_revenue
 )
 
 
@@ -157,9 +158,10 @@ async def get_last_month_outflow(
         total_pg_charges = membership_pg + daily_pass_pg + sessions_pg
 
         # 3. Total GST Payable (in paise for consistency)
-        # GST on subscription (18% of total subscription revenue)
+        # GST on subscription (using centralized Nutritionist Plan GST calculation)
         # Note: fittbot_subscription_revenue is already in paise from DB
-        gst_on_subscription_paise = int(Decimal(str(fittbot_subscription_revenue)) * Decimal("0.18"))
+        nutritionist_calc = calculate_nutritionist_plan_net_revenue(int(fittbot_subscription_revenue))
+        gst_on_subscription_paise = nutritionist_calc["gst"]
         # GST on commissions (18% of commission)
         # Note: commissions are already in paise (int returned from calculate functions)
         gst_on_commission_paise = (
