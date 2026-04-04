@@ -5,8 +5,6 @@ from fastapi import APIRouter
 # ── Admin API (new-style routers) ───────────────────────────────────
 from app.fittbot_admin_api.marketing.marketing import router as admin_marketing_router
 from app.fittbot_admin_api.gymowners import router as admin_gymowners_router
-from app.fittbot_admin_api.free_trial.free_trial import router as admin_free_trial_router
-from app.fittbot_admin_api.complimentary.complimentary import router as admin_complimentary_router
 from app.fittbot_admin_api.fittbot_subscriptions.fittbot_subscriptions import router as admin_fittbot_subscriptions_router
 from app.fittbot_admin_api.telecaller_managers.telecaller_managers import router as admin_telecaller_managers_router
 from app.fittbot_admin_api.user_conversion import router as admin_user_conversion_router
@@ -41,8 +39,6 @@ router = APIRouter()
 # New-style admin routers (registered first in original)
 router.include_router(admin_marketing_router)
 router.include_router(admin_gymowners_router)
-router.include_router(admin_free_trial_router)
-router.include_router(admin_complimentary_router)
 router.include_router(admin_fittbot_subscriptions_router)
 router.include_router(admin_telecaller_managers_router)
 router.include_router(admin_user_conversion_router)

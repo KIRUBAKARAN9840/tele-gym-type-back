@@ -486,23 +486,6 @@ async def get_plans_metrics(db: AsyncSession):
     now = datetime.now()
     today = datetime.now().date()
 
-    # Free Trial - provider: free_trial, status: active
-    stmt = select(func.count(distinct(Subscription.customer_id))).filter(
-        Subscription.provider == 'free_trial',
-        Subscription.active_until >= today
-    )
-    result = await db.execute(stmt)
-    free_trial_count = result.scalar() or 0
-
-    # Complimentary - provider: internal_manual, status: active
-    stmt = select(func.count(distinct(Subscription.customer_id))).filter(
-        Subscription.provider == 'internal_manual',
-        Subscription.status == 'active',
-        Subscription.active_until >= today
-    )
-    result = await db.execute(stmt)
-    complimentary_count = result.scalar() or 0
-
     # Define all plan product IDs
     gold_product_ids = ['one_month_plan:one-month-premium', 'one_month_plan:one-month-premium:rp']
     platinum_product_ids = ['six_month_plan:six-month-premium', 'six_month_plan:six-month-premium:rp']
@@ -553,8 +536,6 @@ async def get_plans_metrics(db: AsyncSession):
     fittbot_diamond = result.scalar() or 0
 
     return {
-        "freeTrial": free_trial_count,
-        "complimentary": complimentary_count,
         "fittbotSubscriptions": {
             "total": fittbot_total,
             "gold": fittbot_gold,
