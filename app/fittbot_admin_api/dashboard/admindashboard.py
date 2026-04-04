@@ -1844,6 +1844,7 @@ async def get_purchase_analytics(
             "daily_pass": {"purchases": 0, "unique_users": 0, "purchases_over_time": []},
             "sessions": {"purchases": 0, "unique_users": 0, "purchases_over_time": []},
             "fittbot_subscription": {"purchases": 0, "unique_users": 0, "purchases_over_time": []},
+            "ai_credits": {"purchases": 0, "unique_users": 0, "purchases_over_time": []},
             "gym_membership": {"purchases": 0, "unique_users": 0, "purchases_over_time": []}
         }
 
@@ -2301,6 +2302,74 @@ async def get_purchase_analytics(
             except Exception as e:
                 import logging
                 logging.error(f"Purchase analytics - Nutritionist Plan error: {str(e)}")
+                pass
+
+        # 3.5. AI CREDITS PURCHASES
+        # NEW LOGIC: Query payments.payments table where payment_metadata['flow'] contains 'food_scanner_credits'
+        # NOTE: Skip when gym filter is applied (not gym-specific purchases)
+        if (not source or source == "ai_credits") and not gym_id:
+            try:
+                # Query AI Credits purchases with aggregations
+                ai_credits_stmt = (
+                    select(
+                        func.date(Payment.captured_at).label('purchase_date'),
+                        func.count().label('purchase_count'),
+                        func.count(distinct(Payment.customer_id)).label('unique_users')
+                    )
+                    .where(Payment.status == "captured")
+                    .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'food_scanner_credits')
+                    .where(func.date(Payment.captured_at) >= start_date_obj)
+                    .where(func.date(Payment.captured_at) <= end_date_obj)
+                )
+
+                # Apply location filter if provided
+                if location_client_ids:
+                    # Convert client_ids to strings for comparison with customer_id
+                    location_customer_ids = {str(cid) for cid in location_client_ids}
+                    ai_credits_stmt = ai_credits_stmt.where(Payment.customer_id.in_(location_customer_ids))
+
+                ai_credits_stmt = ai_credits_stmt.group_by(func.date(Payment.captured_at))
+
+                result = await db.execute(ai_credits_stmt)
+                ai_credits_results = result.all()
+
+                # Get total unique users across all dates - separate query
+                ai_credits_unique_users_stmt = (
+                    select(func.count(distinct(Payment.customer_id)))
+                    .where(Payment.status == "captured")
+                    .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'food_scanner_credits')
+                    .where(func.date(Payment.captured_at) >= start_date_obj)
+                    .where(func.date(Payment.captured_at) <= end_date_obj)
+                )
+
+                # Apply location filter if provided
+                if location_client_ids:
+                    location_customer_ids = {str(cid) for cid in location_client_ids}
+                    ai_credits_unique_users_stmt = ai_credits_unique_users_stmt.where(Payment.customer_id.in_(location_customer_ids))
+
+                ai_credits_unique_result = await db.execute(ai_credits_unique_users_stmt)
+                ai_credits_unique_users_count = ai_credits_unique_result.scalar() or 0
+
+                # Calculate totals and build purchases over time
+                ai_credits_total_purchases = 0
+                for row in ai_credits_results:
+                    date_key = row.purchase_date.isoformat() if row.purchase_date else None
+                    if date_key:
+                        ai_credits_total_purchases += row.purchase_count
+                        if date_key not in all_purchases_over_time:
+                            all_purchases_over_time[date_key] = 0
+                        all_purchases_over_time[date_key] += row.purchase_count
+                        category_breakdown["ai_credits"]["purchases_over_time"].append({
+                            "date": date_key,
+                            "purchases": row.purchase_count
+                        })
+
+                category_breakdown["ai_credits"]["purchases"] = ai_credits_total_purchases
+                category_breakdown["ai_credits"]["unique_users"] = ai_credits_unique_users_count
+
+            except Exception as e:
+                import logging
+                logging.error(f"Purchase analytics - AI Credits error: {str(e)}")
                 pass
 
         # 4. GYM MEMBERSHIP PURCHASES - Filtered by metadata conditions
