@@ -196,8 +196,13 @@ def calculate_net_revenue(
     sessions_comm = Decimal(str(sessions_comm))
 
     # 1. Fymble Subscription Net Revenue
-    fittbot_subscription_gst = fittbot_subscription_revenue * GST_RATE
-    fittbot_subscription_net = fittbot_subscription_revenue - fittbot_subscription_gst
+    # Reverse GST calculation: amount is inclusive of GST
+    # Net before GST = Amount / 1.18
+    # GST = Net before GST × 0.18
+    # Net Revenue = Net before GST - GST
+    net_before_gst = fittbot_subscription_revenue / Decimal("1.18")
+    fittbot_subscription_gst = net_before_gst * GST_RATE
+    fittbot_subscription_net = net_before_gst - fittbot_subscription_gst
 
     # 2. Gym Membership Net Revenue
     gym_membership_gst_on_comm = membership_comm * GST_RATE

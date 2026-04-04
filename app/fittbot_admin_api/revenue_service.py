@@ -250,90 +250,98 @@ async def get_fittbot_subscription_revenue(
     specific_gym_id: Optional[int] = None
 ) -> int:
     """
-    Get Fymble Subscription revenue for a date range.
+    Get Nutritionist Plan (Fymble Subscription) revenue for a date range.
 
-    Uses two methods (EXACTLY matching original admindashboard.py logic):
-    1. Orders with provider_order_id like 'sub_%' -> Payment.amount_minor (with captured_at date filter)
-    2. Payments with provider = 'google_play' -> Payment.amount_minor (with captured_at date filter)
+    NEW LOGIC:
+    - Query payments.payments table
+    - Filter where payment_metadata -> 'flow' contains 'nutrition_purchase_googleplay'
+    - Filter where status = 'captured'
+    - Sum amount_minor values
 
     Args:
         db: AsyncSession
         start_date: Start date (inclusive)
         end_date: End date (inclusive)
-        exclude_gym_id_one: Whether to exclude gym_id = 1
-        specific_gym_id: Filter for specific gym (overrides exclude_gym_id_one)
+        exclude_gym_id_one: Whether to exclude gym_id = 1 (NOT APPLIED for nutritionist plans)
+        specific_gym_id: Filter for specific gym (NOT APPLIED for nutritionist plans)
 
     Returns:
-        Revenue in PAISA
+        Revenue in PAISA (amount_minor is already in minor units)
     """
-    total_revenue = 0
-
-    # METHOD 1: Orders table -> Payments table (provider_order_id like 'sub_%')
     try:
-        order_stmt = (
-            select(Order.id)
-            .join(OrderItem, OrderItem.order_id == Order.id)
-            .where(Order.provider_order_id.like("sub_%"))
-            .where(Order.status == "paid")
-        )
+        import logging
+        logger = logging.getLogger("revenue_service")
 
-        # Gym filtering
-        if specific_gym_id is not None:
-            order_stmt = order_stmt.where(OrderItem.gym_id == str(specific_gym_id))
-        elif exclude_gym_id_one:
-            order_stmt = order_stmt.where(or_(OrderItem.gym_id != "1", OrderItem.gym_id.is_(None)))
+        # For JSON querying in SQLAlchemy with PostgreSQL
+        from sqlalchemy import cast, String
+        import json
 
-        order_result = await db.execute(order_stmt)
-        orders = order_result.all()
-
-        if orders:
-            order_ids = [order.id for order in orders]
-
-            # Query payments table using the order IDs WITH date filter
-            payment_from_order_stmt = (
-                select(func.coalesce(func.sum(Payment.amount_minor), 0))
-                .where(Payment.order_id.in_(order_ids))
-                .where(func.date(Payment.captured_at) >= start_date)
-                .where(func.date(Payment.captured_at) <= end_date)
-            )
-
-            payment_from_order_result = await db.execute(payment_from_order_stmt)
-            total_revenue += payment_from_order_result.scalar() or 0
-
-    except Exception as e:
-        pass
-
-    # METHOD 2: Direct query on payments table (provider = 'google_play')
-    # Note: This catches Google Play payments that may not have 'sub_%' in provider_order_id
-    try:
+        # Build conditions
         conditions = [
-            Payment.provider == "google_play",
             Payment.status == "captured",
-            Order.status == "paid",
-            func.date(Payment.captured_at) >= start_date,
-            func.date(Payment.captured_at) <= end_date
         ]
 
-        # Gym filtering
-        if specific_gym_id is not None:
-            conditions.append(OrderItem.gym_id == str(specific_gym_id))
-        elif exclude_gym_id_one:
-            conditions.append(or_(OrderItem.gym_id != "1", OrderItem.gym_id.is_(None)))
+        # Date filter on captured_at
+        conditions.append(func.date(Payment.captured_at) >= start_date)
+        conditions.append(func.date(Payment.captured_at) <= end_date)
 
-        stmt_2 = (
-            select(func.coalesce(func.sum(Payment.amount_minor), 0))
-            .join(Order, Order.id == Payment.order_id)
-            .join(OrderItem, OrderItem.order_id == Order.id)
-            .where(and_(*conditions))
+        # Fetch all captured payments in date range
+        fetch_stmt = (
+            select(Payment)
+            .where(Payment.status == "captured")
+            .where(func.date(Payment.captured_at) >= start_date)
+            .where(func.date(Payment.captured_at) <= end_date)
         )
 
-        result_2 = await db.execute(stmt_2)
-        total_revenue += result_2.scalar() or 0
+        fetch_result = await db.execute(fetch_stmt)
+        payments = fetch_result.scalars().all()
+
+        logger.info(f"[NUTRITIONIST_PLAN] Total captured payments in range: {len(payments)}")
+
+        # Filter by payment_metadata['flow'] containing 'nutrition_purchase_googleplay'
+        nutritionist_revenue = 0
+        matched_count = 0
+        sample_metadata = None
+
+        for payment in payments:
+            if payment.payment_metadata and isinstance(payment.payment_metadata, dict):
+                # Check flow at different nesting levels
+                flow = None
+
+                # Level 1: Direct flow key
+                if "flow" in payment.payment_metadata:
+                    flow = payment.payment_metadata.get("flow")
+
+                # Level 2: flow inside order_info
+                elif "order_info" in payment.payment_metadata:
+                    order_info = payment.payment_metadata.get("order_info")
+                    if isinstance(order_info, dict) and "flow" in order_info:
+                        flow = order_info.get("flow")
+
+                # Check if flow contains nutrition_purchase_googleplay
+                if flow and "nutrition_purchase_googleplay" in str(flow):
+                    nutritionist_revenue += payment.amount_minor or 0
+                    matched_count += 1
+                    if matched_count <= 3:  # Store first 3 samples
+                        if sample_metadata is None:
+                            sample_metadata = []
+                        sample_metadata.append({
+                            "payment_id": payment.id,
+                            "amount_minor": payment.amount_minor,
+                            "flow": flow,
+                            "metadata": payment.payment_metadata
+                        })
+
+        logger.info(f"[NUTRITIONIST_PLAN] Matched payments: {matched_count}, Revenue: {nutritionist_revenue}")
+        if sample_metadata:
+            logger.info(f"[NUTRITIONIST_PLAN] Sample metadata: {sample_metadata}")
+
+        return int(nutritionist_revenue)
 
     except Exception as e:
-        pass
-
-    return int(total_revenue)
+        import traceback
+        traceback.print_exc()
+        return 0
 
 
 async def get_gym_membership_revenue(
@@ -522,79 +530,72 @@ async def get_amortized_fittbot_subscription_revenue(
     exclude_gym_id_one: bool = True
 ) -> float:
     """
-    Get amortized Fymble Subscription revenue for MRR.
+    Get Nutritionist Plan (Fymble Subscription) revenue for MRR.
 
-    Includes ALL subscriptions active during the target month,
-    with revenue distributed monthly based on subscription duration.
+    NEW LOGIC:
+    - Query payments.payments table
+    - Filter where payment_metadata -> 'flow' contains 'nutrition_purchase_googleplay'
+    - Filter where status = 'captured'
+    - Filter where captured_at is within the target month
+    - Sum amount_minor values
+
+    Note: Nutritionist plans from Google Play are one-time purchases,
+    so no amortization is needed. We count them when captured in the target month.
 
     Args:
         db: AsyncSession
         target_month_start: First day of target month
         target_month_end: Last day of target month
-        exclude_gym_id_one: Whether to exclude gym_id = 1
+        exclude_gym_id_one: Whether to exclude gym_id = 1 (NOT APPLIED for nutritionist plans)
 
     Returns:
-        Amortized revenue in PAISA (can be fractional)
+        Revenue in PAISA
     """
     total_revenue = 0.0
 
     try:
-        # Build conditions
-        conditions = [
-            Order.status == "paid",
-            or_(
-                Payment.provider == "google_play",
-                Order.provider_order_id.like("sub_%"),
-                OrderItem.item_type == "app_subscription",
-                OrderItem.item_type == "fittbot_subscription"
-            )
-        ]
+        import logging
+        logger = logging.getLogger("revenue_service")
 
-        if exclude_gym_id_one:
-            conditions.append(or_(OrderItem.gym_id != "1", OrderItem.gym_id.is_(None)))
-
-        # Fetch subscriptions (using Payment.amount_minor to match original logic)
-        stmt = (
-            select(
-                Payment.amount_minor,
-                OrderItem.sku,
-                Payment.captured_at,
-                Order.created_at
-            )
-            .select_from(Order)
-            .join(OrderItem, OrderItem.order_id == Order.id)
-            .join(Payment, Payment.order_id == Order.id)
-            .where(and_(*conditions))
+        # Fetch all captured payments in the target month
+        fetch_stmt = (
+            select(Payment)
+            .where(Payment.status == "captured")
+            .where(func.date(Payment.captured_at) >= target_month_start)
+            .where(func.date(Payment.captured_at) <= target_month_end)
         )
 
-        result = await db.execute(stmt)
-        subscriptions = result.all()
+        fetch_result = await db.execute(fetch_stmt)
+        payments = fetch_result.scalars().all()
 
-        for sub in subscriptions:
-            amount = sub.amount_minor or 0  # Use Payment.amount_minor, not Order.gross_amount_minor
-            sku = sub.sku
-            payment_date = sub.captured_at or sub.created_at
+        logger.info(f"[NUTRITIONIST_PLAN_MRR] Total payments: {len(payments)}")
 
-            if not payment_date:
-                continue
+        matched_count = 0
+        for payment in payments:
+            if payment.payment_metadata and isinstance(payment.payment_metadata, dict):
+                # Check flow at different nesting levels
+                flow = None
 
-            payment_date_only = payment_date.date() if isinstance(payment_date, datetime) else payment_date
-            duration_months = PRODUCT_PLAN_MAPPING.get(sku, 1)
+                # Level 1: Direct flow key
+                if "flow" in payment.payment_metadata:
+                    flow = payment.payment_metadata.get("flow")
 
-            # Calculate validity end date
-            validity_end_date = (
-                date(payment_date_only.year, payment_date_only.month, 1) +
-                timedelta(days=32 * duration_months)
-            )
-            validity_end_date = date(validity_end_date.year, validity_end_date.month, 1) - timedelta(days=1)
+                # Level 2: flow inside order_info
+                elif "order_info" in payment.payment_metadata:
+                    order_info = payment.payment_metadata.get("order_info")
+                    if isinstance(order_info, dict) and "flow" in order_info:
+                        flow = order_info.get("flow")
 
-            # Check if target month overlaps with validity period
-            if validity_end_date >= target_month_start and payment_date_only <= target_month_end:
-                mrr_contribution = amount / duration_months
-                total_revenue += mrr_contribution
+                # Check if flow contains nutrition_purchase_googleplay
+                if flow and "nutrition_purchase_googleplay" in str(flow):
+                    total_revenue += payment.amount_minor or 0
+                    matched_count += 1
+
+        logger.info(f"[NUTRITIONIST_PLAN_MRR] Matched: {matched_count}, Revenue: {total_revenue}")
 
     except Exception as e:
-        pass
+        import traceback
+        traceback.print_exc()
 
     return total_revenue
 
@@ -1067,83 +1068,72 @@ async def _get_fittbot_subscription_detailed(
     daily_revenue: dict,
     source_revenue: dict
 ):
-    """Get Fymble Subscription revenue with daily breakdown using Payment.amount_minor."""
-    # METHOD 1: Orders -> Payments (provider_order_id like 'sub_%')
-    # Two-step approach to avoid duplicate rows from Order-Payment join
+    """
+    Get Nutritionist Plan (Fymble Subscription) revenue with daily breakdown.
+
+    NEW LOGIC:
+    - Query payments.payments table
+    - Filter where payment_metadata -> 'flow' contains 'nutrition_purchase_googleplay'
+    - Filter where status = 'captured'
+    - Sum amount_minor values
+    """
     try:
-        # Step 1: Get Order IDs (no Payment join yet)
-        order_stmt = (
-            select(Order.id)
-            .join(OrderItem, OrderItem.order_id == Order.id)
-            .where(Order.provider_order_id.like("sub_%"))
-            .where(Order.status == "paid")
-            .where(or_(OrderItem.gym_id != "1", OrderItem.gym_id.is_(None)))
+        import logging
+        logger = logging.getLogger("revenue_service")
+
+        # Fetch all captured payments in date range
+        fetch_stmt = (
+            select(Payment)
+            .where(Payment.status == "captured")
+            .where(func.date(Payment.captured_at) >= start_date)
+            .where(func.date(Payment.captured_at) <= end_date)
         )
 
-        order_result = await db.execute(order_stmt)
-        orders = order_result.all()
+        fetch_result = await db.execute(fetch_stmt)
+        payments = fetch_result.scalars().all()
 
-        if orders:
-            order_ids = [order.id for order in orders]
+        logger.info(f"[NUTRITIONIST_PLAN_DETAILED] Total payments: {len(payments)}")
 
-            # Step 2: Get Payments for those orders with date filter
-            payment_stmt = (
-                select(Payment.amount_minor, Payment.captured_at)
-                .where(Payment.order_id.in_(order_ids))
-                .where(func.date(Payment.captured_at) >= start_date)
-                .where(func.date(Payment.captured_at) <= end_date)
-            )
+        matched_count = 0
+        sample_count = 0
+        for payment in payments:
+            if payment.payment_metadata and isinstance(payment.payment_metadata, dict):
+                # Log first 5 payment metadata samples to debug
+                if sample_count < 5:
+                    logger.info(f"[NUTRITIONIST_PLAN_DETAILED] Sample {sample_count + 1} metadata: {payment.payment_metadata}")
+                    sample_count += 1
 
-            payment_result = await db.execute(payment_stmt)
-            for row in payment_result.all():
-                amount = row.amount_minor or 0
-                source_revenue["fittbot_subscription"] += amount
+                # Check flow at different nesting levels
+                flow = None
 
-                # Track daily revenue
-                date_key = row.captured_at.date().isoformat() if row.captured_at else None
-                if date_key:
-                    if date_key not in daily_revenue:
-                        daily_revenue[date_key] = 0
-                    daily_revenue[date_key] += amount
+                # Level 1: Direct flow key
+                if "flow" in payment.payment_metadata:
+                    flow = payment.payment_metadata.get("flow")
 
-    except Exception as e:
-        pass
+                # Level 2: flow inside order_info
+                elif "order_info" in payment.payment_metadata:
+                    order_info = payment.payment_metadata.get("order_info")
+                    if isinstance(order_info, dict) and "flow" in order_info:
+                        flow = order_info.get("flow")
 
-    # METHOD 2: Direct query on payments (provider = 'google_play')
-    try:
-        conditions = [
-            Payment.provider == "google_play",
-            Payment.status == "captured",
-            Order.status == "paid",
-            func.date(Payment.captured_at) >= start_date,
-            func.date(Payment.captured_at) <= end_date,
-            or_(OrderItem.gym_id != "1", OrderItem.gym_id.is_(None))
-        ]
+                # Check if flow contains nutrition_purchase_googleplay
+                if flow and "nutrition_purchase_googleplay" in str(flow):
+                    amount = payment.amount_minor or 0
+                    source_revenue["fittbot_subscription"] += amount
+                    matched_count += 1
 
-        stmt = (
-            select(
-                Payment.amount_minor,
-                Payment.captured_at
-            )
-            .join(Order, Order.id == Payment.order_id)
-            .join(OrderItem, OrderItem.order_id == Order.id)
-            .where(and_(*conditions))
-        )
+                    # Track daily revenue
+                    date_key = payment.captured_at.date().isoformat() if payment.captured_at else None
+                    if date_key:
+                        if date_key not in daily_revenue:
+                            daily_revenue[date_key] = 0
+                        daily_revenue[date_key] += amount
 
-        result = await db.execute(stmt)
-        for row in result.all():
-            amount = row.amount_minor or 0
-            source_revenue["fittbot_subscription"] += amount
-
-            # Track daily revenue
-            date_key = row.captured_at.date().isoformat() if row.captured_at else None
-            if date_key:
-                if date_key not in daily_revenue:
-                    daily_revenue[date_key] = 0
-                daily_revenue[date_key] += amount
+        logger.info(f"[NUTRITIONIST_PLAN_DETAILED] Matched: {matched_count}, Revenue: {source_revenue['fittbot_subscription']}")
 
     except Exception as e:
-        pass
+        import traceback
+        traceback.print_exc()
 
 
 async def _get_gym_membership_detailed(
