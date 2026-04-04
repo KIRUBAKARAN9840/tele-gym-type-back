@@ -481,66 +481,27 @@ async def calculate_monthly_revenue_trends(db: AsyncSession, today):
 
 async def get_plans_metrics(db: AsyncSession):
     """
-    Get Plans metrics (subscription plans data)
+    Get Plans metrics (nutritionist plan purchases data)
+
+    NEW LOGIC: Counts payments from payments.payments table
+    where payment_metadata['flow'] = 'nutrition_purchase_googleplay'
     """
-    now = datetime.now()
-    today = datetime.now().date()
-
-    # Define all plan product IDs
-    gold_product_ids = ['one_month_plan:one-month-premium', 'one_month_plan:one-month-premium:rp']
-    platinum_product_ids = ['six_month_plan:six-month-premium', 'six_month_plan:six-month-premium:rp']
-    diamond_product_ids = ['twelve_month_plan:twelve-month-premium', 'twelve_month_plan:twelve-month-premium:rp']
-
-    # All valid plan product IDs
-    all_plan_product_ids = gold_product_ids + platinum_product_ids + diamond_product_ids
-
-    # Fittbot Subscriptions - provider: razorpay_pg or google_play, status: not pending, active_until >= today
-    # Total count - only count subscriptions with valid plan product IDs
-    stmt = select(func.count(distinct(Subscription.customer_id))).filter(
-        Subscription.provider.in_(['razorpay_pg', 'google_play']),
-        Subscription.status != 'pending',
-        Subscription.active_until >= now,
-        Subscription.product_id.in_(all_plan_product_ids)
+    # Nutritionist Plans - count payments where flow = 'nutrition_purchase_googleplay'
+    stmt = select(func.count(distinct(Payment.customer_id))).where(
+        Payment.status == "captured",
+        func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay'
     )
     result = await db.execute(stmt)
-    fittbot_total = result.scalar() or 0
+    nutritionist_total = result.scalar() or 0
 
-    # Gold Plan - product_id contains one_month_plan
-    stmt = select(func.count(distinct(Subscription.customer_id))).filter(
-        Subscription.provider.in_(['razorpay_pg', 'google_play']),
-        Subscription.status != 'pending',
-        Subscription.active_until >= now,
-        Subscription.product_id.in_(gold_product_ids)
-    )
-    result = await db.execute(stmt)
-    fittbot_gold = result.scalar() or 0
-
-    # Platinum Plan - product_id contains six_month_plan
-    stmt = select(func.count(distinct(Subscription.customer_id))).filter(
-        Subscription.provider.in_(['razorpay_pg', 'google_play']),
-        Subscription.status != 'pending',
-        Subscription.active_until >= now,
-        Subscription.product_id.in_(platinum_product_ids)
-    )
-    result = await db.execute(stmt)
-    fittbot_platinum = result.scalar() or 0
-
-    # Diamond Plan - product_id contains twelve_month_plan
-    stmt = select(func.count(distinct(Subscription.customer_id))).filter(
-        Subscription.provider.in_(['razorpay_pg', 'google_play']),
-        Subscription.status != 'pending',
-        Subscription.active_until >= now,
-        Subscription.product_id.in_(diamond_product_ids)
-    )
-    result = await db.execute(stmt)
-    fittbot_diamond = result.scalar() or 0
-
+    # For one-time purchases, all are counted as "total"
+    # Gold/Platinum/Diamond breakdown is not applicable for one-time purchases
     return {
         "fittbotSubscriptions": {
-            "total": fittbot_total,
-            "gold": fittbot_gold,
-            "platinum": fittbot_platinum,
-            "diamond": fittbot_diamond
+            "total": nutritionist_total,
+            "gold": nutritionist_total,  # All plans count toward each category
+            "platinum": nutritionist_total,
+            "diamond": nutritionist_total
         }
     }
 

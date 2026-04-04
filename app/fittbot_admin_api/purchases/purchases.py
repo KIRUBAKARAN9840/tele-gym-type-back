@@ -2115,7 +2115,32 @@ async def get_nutritionist_plans(
     try:
         import math
 
-        # Build optimized query with all filters applied in SQL
+        # Build base query for Payment table
+        base_payment_query = (
+            select(Payment.customer_id)
+            .where(Payment.status == "captured")
+            .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
+        )
+
+        # Apply search filter to base query
+        if search:
+            search_term = f"%{search.lower()}%"
+            base_payment_query = base_payment_query.join(
+                Client, Payment.customer_id == Client.client_id
+            ).where(
+                or_(
+                    func.lower(Client.name).like(search_term),
+                    Client.contact.like(search_term)
+                )
+            )
+
+        # Get unique users count (matches home page logic)
+        unique_count_subquery = base_payment_query.subquery()
+        unique_count_stmt = select(func.count(distinct(unique_count_subquery.c.customer_id)))
+        unique_count_result = await db.execute(unique_count_stmt)
+        unique_users_count = unique_count_result.scalar() or 0
+
+        # Build main query with all columns
         query = (
             select(
                 Payment.id.label("purchase_id"),
@@ -2134,7 +2159,7 @@ async def get_nutritionist_plans(
             .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
         )
 
-        # Apply search filter in SQL
+        # Apply search filter
         if search:
             search_term = f"%{search.lower()}%"
             query = query.where(
@@ -2144,7 +2169,7 @@ async def get_nutritionist_plans(
                 )
             )
 
-        # Get total count with filters applied
+        # Get total count
         count_subquery = query.subquery()
         count_stmt = select(func.count()).select_from(count_subquery)
         count_result = await db.execute(count_stmt)
@@ -2156,6 +2181,7 @@ async def get_nutritionist_plans(
                 "data": {
                     "users": [],
                     "total": 0,
+                    "unique_users": 0,
                     "page": page,
                     "limit": limit,
                     "totalPages": 0,
@@ -2222,6 +2248,7 @@ async def get_nutritionist_plans(
             "data": {
                 "users": nutritionist_plan_users,
                 "total": total_count,
+                "unique_users": unique_users_count,
                 "page": page,
                 "limit": limit,
                 "totalPages": total_pages,
