@@ -993,9 +993,16 @@ async def get_revenue_analytics(
                 "daily_pass": revenue_data.source_split["daily_pass"],
                 "sessions": revenue_data.source_split["sessions"],
                 "fittbot_subscription": revenue_data.source_split["fittbot_subscription"],
-                "gym_membership": revenue_data.source_split["gym_membership"]
+                "gym_membership": revenue_data.source_split["gym_membership"],
+                "ai_credits": revenue_data.source_split.get("ai_credits", 0)
             },
-            "sourceSplitRupees": revenue_data.source_split_rupees,
+            "sourceSplitRupees": {
+                "daily_pass": revenue_data.source_split_rupees.get("daily_pass", 0),
+                "sessions": revenue_data.source_split_rupees.get("sessions", 0),
+                "fittbot_subscription": revenue_data.source_split_rupees.get("fittbot_subscription", 0),
+                "gym_membership": revenue_data.source_split_rupees.get("gym_membership", 0),
+                "ai_credits": revenue_data.source_split_rupees.get("ai_credits", 0)
+            },
             "revenueOverTime": [
                 {
                     "date": point.date,

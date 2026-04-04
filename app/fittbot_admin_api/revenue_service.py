@@ -61,6 +61,7 @@ class RevenueBreakdown(BaseModel):
     sessions: int
     fittbot_subscription: int
     gym_membership: int
+    ai_credits: int
 
 
 class AmortizedRevenueBreakdown(BaseModel):
@@ -70,6 +71,7 @@ class AmortizedRevenueBreakdown(BaseModel):
     sessions: int
     fittbot_subscription: float  # Can be fractional due to amortization
     gym_membership: float  # Can be fractional due to amortization
+    ai_credits: float  # Can be fractional due to amortization
 
 
 class DailyRevenuePoint(BaseModel):
@@ -507,16 +509,94 @@ async def get_revenue_breakdown(
     sessions = await get_sessions_revenue(db, start_date, end_date, exclude_gym_id_one, specific_gym_id)
     fittbot_subscription = await get_fittbot_subscription_revenue(db, start_date, end_date, exclude_gym_id_one, specific_gym_id)
     gym_membership = await get_gym_membership_revenue(db, start_date, end_date, exclude_gym_id_one, specific_gym_id)
+    ai_credits = await get_ai_credits_revenue(db, start_date, end_date, exclude_gym_id_one, specific_gym_id)
 
-    total_revenue = daily_pass + sessions + fittbot_subscription + gym_membership
+    total_revenue = daily_pass + sessions + fittbot_subscription + gym_membership + ai_credits
 
     return RevenueBreakdown(
         total_revenue=total_revenue,
         daily_pass=daily_pass,
         sessions=sessions,
         fittbot_subscription=fittbot_subscription,
-        gym_membership=gym_membership
+        gym_membership=gym_membership,
+        ai_credits=ai_credits
     )
+
+
+async def get_ai_credits_revenue(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+    exclude_gym_id_one: bool = True,
+    specific_gym_id: Optional[int] = None
+) -> int:
+    """
+    Get AI Credits revenue for a date range.
+
+    NEW LOGIC:
+    - Query payments.payments table
+    - Filter where payment_metadata -> 'flow' contains 'food_scanner_credits'
+    - Filter where status = 'captured'
+    - Filter where captured_at is within the date range
+    - Sum amount_minor values
+
+    Args:
+        db: AsyncSession
+        start_date: Start date (inclusive)
+        end_date: End date (inclusive)
+        exclude_gym_id_one: Whether to exclude gym_id = 1 (NOT APPLIED for AI credits)
+        specific_gym_id: Filter for specific gym (NOT APPLIED for AI credits)
+
+    Returns:
+        Revenue in PAISA
+    """
+    total_revenue = 0
+
+    try:
+        import logging
+        logger = logging.getLogger("revenue_service")
+
+        # Fetch all captured payments in the date range
+        fetch_stmt = (
+            select(Payment)
+            .where(Payment.status == "captured")
+            .where(func.date(Payment.captured_at) >= start_date)
+            .where(func.date(Payment.captured_at) <= end_date)
+        )
+
+        fetch_result = await db.execute(fetch_stmt)
+        payments = fetch_result.scalars().all()
+
+        logger.info(f"[AI_CREDITS] Total captured payments: {len(payments)}")
+
+        matched_count = 0
+        for payment in payments:
+            if payment.payment_metadata and isinstance(payment.payment_metadata, dict):
+                # Check flow at different nesting levels
+                flow = None
+
+                # Level 1: Direct flow key
+                if "flow" in payment.payment_metadata:
+                    flow = payment.payment_metadata.get("flow")
+
+                # Level 2: flow inside order_info
+                elif "order_info" in payment.payment_metadata:
+                    order_info = payment.payment_metadata.get("order_info")
+                    if isinstance(order_info, dict) and "flow" in order_info:
+                        flow = order_info.get("flow")
+
+                # Check if flow contains food_scanner_credits
+                if flow and "food_scanner_credits" in str(flow):
+                    total_revenue += payment.amount_minor or 0
+                    matched_count += 1
+
+        logger.info(f"[AI_CREDITS] Matched: {matched_count}, Revenue: {total_revenue}")
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+    return total_revenue
 
 
 # ============================================================================
@@ -834,7 +914,7 @@ async def get_detailed_revenue_with_breakdowns(
         db: AsyncSession
         start_date: Start date (inclusive)
         end_date: End date (inclusive)
-        source: Filter by specific source (daily_pass, sessions, fittbot_subscription, gym_membership)
+        source: Filter by specific source (daily_pass, sessions, fittbot_subscription, gym_membership, ai_credits)
         specific_gym_id: Filter for specific gym
         exclude_gym_id_one: Whether to exclude gym_id = 1
 
@@ -852,7 +932,8 @@ async def get_detailed_revenue_with_breakdowns(
         "daily_pass": 0,
         "sessions": 0,
         "fittbot_subscription": 0,
-        "gym_membership": 0
+        "gym_membership": 0,
+        "ai_credits": 0
     }
 
     # Determine which sources to query
@@ -865,6 +946,8 @@ async def get_detailed_revenue_with_breakdowns(
         query_sources.append("fittbot_subscription")
     if not source or source == "gym_membership":
         query_sources.append("gym_membership")
+    if (not source or source == "ai_credits") and not specific_gym_id:
+        query_sources.append("ai_credits")
 
     # Query each source and collect daily/gym breakdowns
     for query_source in query_sources:
@@ -887,6 +970,11 @@ async def get_detailed_revenue_with_breakdowns(
             await _get_gym_membership_detailed(
                 db, start_date, end_date, specific_gym_id, exclude_gym_id_one,
                 daily_revenue, gym_revenue, source_revenue_paisa
+            )
+        elif query_source == "ai_credits":
+            await _get_ai_credits_detailed(
+                db, start_date, end_date,
+                daily_revenue, source_revenue_paisa
             )
 
     # Calculate total revenue (in PAISA)
@@ -922,7 +1010,8 @@ async def get_detailed_revenue_with_breakdowns(
         "daily_pass": source_revenue_paisa["daily_pass"] / 100,
         "sessions": source_revenue_paisa["sessions"] / 100,  # Convert from paisa to rupees
         "fittbot_subscription": source_revenue_paisa["fittbot_subscription"] / 100,
-        "gym_membership": source_revenue_paisa["gym_membership"] / 100
+        "gym_membership": source_revenue_paisa["gym_membership"] / 100,
+        "ai_credits": source_revenue_paisa["ai_credits"] / 100
     }
 
     return DetailedRevenueBreakdown(
@@ -1241,6 +1330,73 @@ async def _get_gym_membership_detailed(
                 if gym_key not in gym_revenue:
                     gym_revenue[gym_key] = 0
                 gym_revenue[gym_key] += amount
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+
+async def _get_ai_credits_detailed(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+    daily_revenue: dict,
+    source_revenue: dict
+):
+    """
+    Get AI Credits revenue with daily breakdown.
+
+    NEW LOGIC:
+    - Query payments.payments table
+    - Filter where payment_metadata -> 'flow' contains 'food_scanner_credits'
+    - Filter where status = 'captured'
+    - Sum amount_minor values
+    """
+    try:
+        import logging
+        logger = logging.getLogger("revenue_service")
+
+        # Fetch all captured payments in date range
+        fetch_stmt = (
+            select(Payment)
+            .where(Payment.status == "captured")
+            .where(func.date(Payment.captured_at) >= start_date)
+            .where(func.date(Payment.captured_at) <= end_date)
+        )
+
+        fetch_result = await db.execute(fetch_stmt)
+        payments = fetch_result.scalars().all()
+
+        matched_count = 0
+        for payment in payments:
+            if payment.payment_metadata and isinstance(payment.payment_metadata, dict):
+                # Check flow at different nesting levels
+                flow = None
+
+                # Level 1: Direct flow key
+                if "flow" in payment.payment_metadata:
+                    flow = payment.payment_metadata.get("flow")
+
+                # Level 2: flow inside order_info
+                elif "order_info" in payment.payment_metadata:
+                    order_info = payment.payment_metadata.get("order_info")
+                    if isinstance(order_info, dict) and "flow" in order_info:
+                        flow = order_info.get("flow")
+
+                # Check if flow contains food_scanner_credits
+                if flow and "food_scanner_credits" in str(flow):
+                    amount = payment.amount_minor or 0
+                    source_revenue["ai_credits"] += amount
+                    matched_count += 1
+
+                    # Track daily revenue
+                    date_key = payment.captured_at.date().isoformat() if payment.captured_at else None
+                    if date_key:
+                        if date_key not in daily_revenue:
+                            daily_revenue[date_key] = 0
+                        daily_revenue[date_key] += amount
+
+        logger.info(f"[AI_CREDITS_DETAILED] Matched: {matched_count}, Revenue: {source_revenue['ai_credits']}")
 
     except Exception as e:
         import traceback
