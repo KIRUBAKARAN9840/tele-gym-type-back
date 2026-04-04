@@ -882,15 +882,17 @@ async def get_mrr_revenue_breakdown(
     sessions = await get_sessions_revenue(db, target_month_start, target_month_end, exclude_gym_id_one)
     fittbot_subscription = await get_amortized_fittbot_subscription_revenue(db, target_month_start, target_month_end, exclude_gym_id_one)
     gym_membership = await get_amortized_gym_membership_revenue(db, target_month_start, target_month_end, exclude_gym_id_one)
+    ai_credits = await get_ai_credits_revenue(db, target_month_start, target_month_end, exclude_gym_id_one)
 
-    total_revenue = float(daily_pass) + float(sessions) + fittbot_subscription + gym_membership
+    total_revenue = float(daily_pass) + float(sessions) + fittbot_subscription + gym_membership + float(ai_credits)
 
     return AmortizedRevenueBreakdown(
         total_revenue=total_revenue,
         daily_pass=daily_pass,
         sessions=sessions,
         fittbot_subscription=fittbot_subscription,
-        gym_membership=gym_membership
+        gym_membership=gym_membership,
+        ai_credits=float(ai_credits)
     )
 
 
@@ -1429,33 +1431,40 @@ def calculate_nutritionist_plan_net_revenue(revenue_in_paise: int) -> dict:
     """
     Calculate Net Revenue and GST for Nutritionist Plan (Fittbot Subscription).
 
-    Nutritionist Plan revenue is inclusive of GST, so we use reverse GST calculation:
-    - Net before GST = Revenue / 1.18
-    - GST = Net before GST × 0.18
-    - Net Revenue = Net before GST - GST
+    Nutritionist Plan revenue is inclusive of GST, sold through Google Play:
+    Step 1: Reverse GST calculation = Revenue / 1.18
+    Step 2: Deduct 15% Google commission from taxable value
+    Final Net = (Revenue / 1.18) - (Revenue × 0.15)
 
     Args:
         revenue_in_paise: Revenue amount in PAISA (minor units)
 
     Returns:
-        Dictionary with revenue, gst, and net_revenue in PAISA (int)
+        Dictionary with revenue, gst, google_commission, and net_revenue in PAISA (int)
     """
     from decimal import Decimal
 
     GST_RATE = Decimal("0.18")  # 18% GST
+    GOOGLE_COMMISSION_RATE = Decimal("0.15")  # 15% Google commission
 
     # Convert to Decimal for precise calculation
     revenue = Decimal(str(revenue_in_paise))
 
-    # Reverse GST calculation (amount is inclusive of GST)
-    net_before_gst = revenue / Decimal("1.18")
-    gst = net_before_gst * GST_RATE
-    net_revenue = net_before_gst - gst
+    # Step 1: Reverse GST calculation (amount is inclusive of GST)
+    taxable_value = revenue / Decimal("1.18")
+    gst = revenue - taxable_value
+
+    # Step 2: Google commission (15% of total revenue)
+    google_commission = revenue * GOOGLE_COMMISSION_RATE
+
+    # Step 3: Net revenue after GST and Google commission
+    net_revenue = taxable_value - google_commission
 
     return {
         "revenue": int(revenue),
         "gst": int(gst),
-        "net_revenue": int(net_revenue)
+        "google_commission": int(google_commission),
+        "net_revenue": int(max(0, net_revenue))
     }
 
 
@@ -1463,31 +1472,38 @@ def calculate_ai_credits_net_revenue(revenue_in_paise: int) -> dict:
     """
     Calculate Net Revenue and GST for AI Credits.
 
-    AI Credits revenue is inclusive of GST, so we use reverse GST calculation:
-    - Net before GST = Revenue / 1.18
-    - GST = Net before GST × 0.18
-    - Net Revenue = Net before GST - GST
+    AI Credits revenue is inclusive of GST, sold through Google Play:
+    Step 1: Reverse GST calculation = Revenue / 1.18
+    Step 2: Deduct 15% Google commission from taxable value
+    Final Net = (Revenue / 1.18) - (Revenue × 0.15)
 
     Args:
         revenue_in_paise: Revenue amount in PAISA (minor units)
 
     Returns:
-        Dictionary with revenue, gst, and net_revenue in PAISA (int)
+        Dictionary with revenue, gst, google_commission, and net_revenue in PAISA (int)
     """
     from decimal import Decimal
 
     GST_RATE = Decimal("0.18")  # 18% GST
+    GOOGLE_COMMISSION_RATE = Decimal("0.15")  # 15% Google commission
 
     # Convert to Decimal for precise calculation
     revenue = Decimal(str(revenue_in_paise))
 
-    # Reverse GST calculation (amount is inclusive of GST)
-    net_before_gst = revenue / Decimal("1.18")
-    gst = net_before_gst * GST_RATE
-    net_revenue = net_before_gst - gst
+    # Step 1: Reverse GST calculation (amount is inclusive of GST)
+    taxable_value = revenue / Decimal("1.18")
+    gst = revenue - taxable_value
+
+    # Step 2: Google commission (15% of total revenue)
+    google_commission = revenue * GOOGLE_COMMISSION_RATE
+
+    # Step 3: Net revenue after GST and Google commission
+    net_revenue = taxable_value - google_commission
 
     return {
         "revenue": int(revenue),
         "gst": int(gst),
-        "net_revenue": int(net_revenue)
+        "google_commission": int(google_commission),
+        "net_revenue": int(max(0, net_revenue))
     }

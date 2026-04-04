@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api/admin/mrr", tags=["MRR"])
 
 def calculate_net_revenue_for_mrr(
     fittbot_subscription_revenue: float,
+    ai_credits_revenue: float,
     gym_membership_revenue: float,
     daily_pass_revenue: float,
     sessions_revenue: float,
@@ -30,13 +31,14 @@ def calculate_net_revenue_for_mrr(
     sessions_comm: float
 ) -> Dict[str, Any]:
     """
-    Calculate Net Revenue for all four income categories.
+    Calculate Net Revenue for all income categories.
 
     Logic:
     1. Fymble Subscription: Deduct 18% GST from total revenue
-    2. Gym Membership: Deduct 18% GST on platform commission only
-    3. Daily Pass: Deduct 18% GST on platform commission only
-    4. Session: Deduct 18% GST on platform commission only
+    2. AI Credits: Deduct 18% GST from total revenue
+    3. Gym Membership: Deduct 18% GST on platform commission only
+    4. Daily Pass: Deduct 18% GST on platform commission only
+    5. Session: Deduct 18% GST on platform commission only
 
     Returns dict with individual net revenues and total net revenue in paise.
     """
@@ -44,6 +46,7 @@ def calculate_net_revenue_for_mrr(
 
     # Convert all inputs to Decimal
     fittbot_subscription_revenue = Decimal(str(fittbot_subscription_revenue))
+    ai_credits_revenue = Decimal(str(ai_credits_revenue))
     gym_membership_revenue = Decimal(str(gym_membership_revenue))
     daily_pass_revenue = Decimal(str(daily_pass_revenue))
     sessions_revenue = Decimal(str(sessions_revenue))
@@ -55,21 +58,26 @@ def calculate_net_revenue_for_mrr(
     fittbot_subscription_gst = fittbot_subscription_revenue * GST_RATE
     fittbot_subscription_net = fittbot_subscription_revenue - fittbot_subscription_gst
 
-    # 2. Gym Membership Net Revenue
+    # 2. AI Credits Net Revenue
+    ai_credits_gst = ai_credits_revenue * GST_RATE
+    ai_credits_net = ai_credits_revenue - ai_credits_gst
+
+    # 3. Gym Membership Net Revenue
     gym_membership_gst_on_comm = membership_comm * GST_RATE
     gym_membership_net = gym_membership_revenue - gym_membership_gst_on_comm
 
-    # 3. Daily Pass Net Revenue
+    # 4. Daily Pass Net Revenue
     daily_pass_gst_on_comm = daily_pass_comm * GST_RATE
     daily_pass_net = daily_pass_revenue - daily_pass_gst_on_comm
 
-    # 4. Session Net Revenue
+    # 5. Session Net Revenue
     sessions_gst_on_comm = sessions_comm * GST_RATE
     sessions_net = sessions_revenue - sessions_gst_on_comm
 
     # Total Net Revenue
     total_net_revenue = (
         fittbot_subscription_net +
+        ai_credits_net +
         gym_membership_net +
         daily_pass_net +
         sessions_net
@@ -78,6 +86,7 @@ def calculate_net_revenue_for_mrr(
     return {
         "total": float(total_net_revenue),
         "fittbot_subscription": float(fittbot_subscription_net),
+        "ai_credits": float(ai_credits_net),
         "gym_membership": float(gym_membership_net),
         "daily_pass": float(daily_pass_net),
         "sessions": float(sessions_net)
@@ -186,6 +195,7 @@ async def get_mrr_data(
         # Calculate NET revenue (after GST)
         current_net_result = calculate_net_revenue_for_mrr(
             fittbot_subscription_revenue=current_revenue_data.fittbot_subscription,
+            ai_credits_revenue=current_revenue_data.ai_credits,
             gym_membership_revenue=current_revenue_data.gym_membership,
             daily_pass_revenue=current_revenue_data.daily_pass,
             sessions_revenue=current_revenue_data.sessions,
@@ -196,6 +206,7 @@ async def get_mrr_data(
 
         prev_net_result = calculate_net_revenue_for_mrr(
             fittbot_subscription_revenue=prev_revenue_data.fittbot_subscription,
+            ai_credits_revenue=prev_revenue_data.ai_credits,
             gym_membership_revenue=prev_revenue_data.gym_membership,
             daily_pass_revenue=prev_revenue_data.daily_pass,
             sessions_revenue=prev_revenue_data.sessions,
@@ -228,6 +239,7 @@ async def get_mrr_data(
                 "breakdown": {
                     "current_month": {
                         "fittbot_subscription": format_two_decimal(paise_to_rupees_float(current_net_result["fittbot_subscription"])),
+                        "ai_credits": format_two_decimal(paise_to_rupees_float(current_net_result["ai_credits"])),
                         "gym_membership": format_two_decimal(paise_to_rupees_float(current_net_result["gym_membership"])),
                         "daily_pass": format_two_decimal(paise_to_rupees_float(current_net_result["daily_pass"])),
                         "sessions": format_two_decimal(paise_to_rupees_float(current_net_result["sessions"])),
@@ -235,6 +247,7 @@ async def get_mrr_data(
                     },
                     "previous_month": {
                         "fittbot_subscription": format_two_decimal(paise_to_rupees_float(prev_net_result["fittbot_subscription"])),
+                        "ai_credits": format_two_decimal(paise_to_rupees_float(prev_net_result["ai_credits"])),
                         "gym_membership": format_two_decimal(paise_to_rupees_float(prev_net_result["gym_membership"])),
                         "daily_pass": format_two_decimal(paise_to_rupees_float(prev_net_result["daily_pass"])),
                         "sessions": format_two_decimal(paise_to_rupees_float(prev_net_result["sessions"])),
