@@ -2772,3 +2772,129 @@ async def export_nutritionist_plans(
             status_code=500,
             detail="An error occurred while exporting nutritionist plans"
         )
+
+
+@router.get("/export-ai-credits")
+async def export_ai_credits(
+    search: Optional[str] = Query(None, description="Search by client name or mobile"),
+    start_date: Optional[str] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Export AI Credits purchases to Excel.
+    Same filter as /ai-credits listing endpoint:
+      - payment_metadata['flow'] == 'food_scanner_credits' (exact match)
+      - status == 'captured'
+      - Excludes internal/test contacts
+    """
+    try:
+        import logging
+
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723"]
+
+        start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+
+        ai_flow_cond = func.json_extract(Payment.payment_metadata, "$.flow") == "food_scanner_credits"
+
+        query = (
+            select(
+                Payment.id.label("purchase_id"),
+                Payment.customer_id.label("customer_id"),
+                Payment.captured_at.label("purchased_at"),
+                Payment.amount_minor.label("amount_minor"),
+                Client.name.label("client_name"),
+                Client.contact.label("client_contact"),
+            )
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(Payment.status == "captured")
+            .where(ai_flow_cond)
+            .where(~Client.contact.in_(EXCLUDED_CONTACTS))
+        )
+
+        if start_date_obj:
+            query = query.where(func.date(Payment.captured_at) >= start_date_obj)
+        if end_date_obj:
+            query = query.where(func.date(Payment.captured_at) <= end_date_obj)
+
+        if search:
+            search_term = f"%{search.lower()}%"
+            query = query.where(
+                or_(
+                    func.lower(Client.name).like(search_term),
+                    Client.contact.like(search_term)
+                )
+            )
+
+        query = query.order_by(desc(Payment.captured_at))
+
+        result = await db.execute(query)
+        rows = result.all()
+
+        # Build Excel
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "AI Credits"
+
+        headers = ["#", "Client Name", "Contact", "Purchased Date", "Amount (₹)"]
+        ws.append(headers)
+
+        # Header style — cyan to match AI credits theme
+        header_fill = PatternFill(start_color="0891B2", end_color="0891B2", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+
+        def fmt_date(d):
+            if not d:
+                return "N/A"
+            return d.strftime("%Y-%m-%d")
+
+        for idx, row in enumerate(rows, start=1):
+            amount_rupees = float(row.amount_minor / 100) if row.amount_minor else 0.0
+            ws.append([
+                idx,
+                row.client_name or "N/A",
+                row.client_contact or "N/A",
+                fmt_date(row.purchased_at),
+                f"{amount_rupees:.2f}",
+            ])
+
+        # Auto-adjust column widths
+        for column in ws.columns:
+            max_length = 0
+            col_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except Exception:
+                    pass
+            ws.column_dimensions[col_letter].width = min(max_length + 2, 50)
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"ai_credits_{timestamp}.xlsx"
+
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except Exception as e:
+        import logging
+        logging.error(f"Error in export_ai_credits: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while exporting AI credits"
+        )

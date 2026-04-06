@@ -2822,17 +2822,25 @@ async def get_booking_averages(
                 pass
 
             # 4. Nutritionist Plan (Fittbot subscription) purchases
-            # NEW LOGIC: Query payments.payments table where payment_metadata['flow'] = 'nutrition_purchase_googleplay'
+            # Filter: payment_metadata['flow'] == 'nutrition_purchase_googleplay'
+            # Exclude internal/test contacts: 7373675762, 9486987082, 8667458723
             try:
+                EXCLUDED_CONTACTS_NUTRI = ["7373675762", "9486987082", "8667458723"]
                 subscription_start = datetime.combine(start_date, datetime.min.time())
                 subscription_end = datetime.combine(end_date, datetime.min.time()).replace(hour=23, minute=59, second=59)
 
-                nutritionist_stmt = select(func.count()).where(
-                    and_(
-                        Payment.status == "captured",
-                        func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay',
-                        Payment.captured_at >= subscription_start,
-                        Payment.captured_at <= subscription_end
+                nutritionist_stmt = (
+                    select(func.count(Payment.id))
+                    .select_from(Payment)
+                    .outerjoin(Client, Payment.customer_id == Client.client_id)
+                    .where(
+                        and_(
+                            Payment.status == "captured",
+                            func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay',
+                            Payment.captured_at >= subscription_start,
+                            Payment.captured_at <= subscription_end,
+                            ~Client.contact.in_(EXCLUDED_CONTACTS_NUTRI)
+                        )
                     )
                 )
                 query_result = await db.execute(nutritionist_stmt)
