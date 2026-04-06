@@ -680,7 +680,7 @@ async def compute_gmv_totals(db: AsyncSession, start_date_obj, end_date_obj):
     Called by both /gmv-summary and /api/admin/unit-economics/data
     so that both always return identical values.
     """
-    EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723"]
+    EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
 
     # Daily Pass
     dp_conditions = [DailyPass.gym_id != "1"]
@@ -691,7 +691,7 @@ async def compute_gmv_totals(db: AsyncSession, start_date_obj, end_date_obj):
 
     dp_stmt = (
         select(
-            func.count(DailyPass.id).label("count"),
+            func.coalesce(func.sum(DailyPass.days_total), 0).label("count"),
             func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("total_revenue")
         )
         .select_from(DailyPass)
@@ -710,7 +710,7 @@ async def compute_gmv_totals(db: AsyncSession, start_date_obj, end_date_obj):
 
     sess_stmt = (
         select(
-            func.count(SessionPurchase.id).label("count"),
+            func.coalesce(func.sum(SessionPurchase.sessions_count), 0).label("count"),
             func.coalesce(func.sum(SessionPurchase.payable_rupees), 0).label("total_revenue")
         )
         .select_from(SessionPurchase)
@@ -874,7 +874,7 @@ async def get_ai_credits(
         ai_flow_cond = func.json_extract(Payment.payment_metadata, "$.flow") == "food_scanner_credits"
 
         # Excluded internal/test contacts (same list as nutrition plans and GMV)
-        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723"]
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
 
         # Base query
         query = (
@@ -2450,7 +2450,7 @@ async def get_nutritionist_plans(
         import math
 
         # Contacts to always exclude (internal/test accounts)
-        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723"]
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
 
         # Build base query for Payment table — always join Client to apply exclusion
         base_payment_query = (
@@ -2615,7 +2615,7 @@ async def export_nutritionist_plans(
     Returns all nutritionist plan purchases (one-time Google Play purchases) without pagination.
     """
     try:
-        # Build optimized query for nutritionist plan purchases
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
         query = (
             select(
                 Payment.id.label("purchase_id"),
@@ -2632,6 +2632,7 @@ async def export_nutritionist_plans(
             .outerjoin(Client, Payment.customer_id == Client.client_id)
             .where(Payment.status == "captured")
             .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
+            .where(~Client.contact.in_(EXCLUDED_CONTACTS))
             .order_by(desc(Payment.captured_at))
         )
 
@@ -2752,7 +2753,7 @@ async def export_ai_credits(
     try:
         import logging
 
-        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723"]
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
 
         start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
         end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None

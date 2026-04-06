@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
-from sqlalchemy import func, and_, select, distinct, or_, text, String, desc
+from sqlalchemy import func, and_, select, distinct, or_, text, String, desc, cast, Integer
 from sqlalchemy.sql.expression import literal
 
 from sqlalchemy.orm import Session
@@ -1853,30 +1853,30 @@ async def get_purchase_analytics(
         location_purchases = {}  # location -> purchase count
 
         # 1. DAILY PASS PURCHASES - Single aggregated query
+        # GMV fix: INNER JOIN with Gym table to exclude orphaned DailyPass records (gym_id not in Gym table)
         if not source or source == "daily_pass":
             try:
                 import logging
                 logging.info(f"Daily pass purchases: gym_id={gym_id}, source={source}")
                 dailypass_session = get_dailypass_session()
 
-                # Build base query for getting all purchases (for totals)
+                # Build base query — JOIN Gym table to exclude records with no matching gym
+                # GMV fix: SUM(days_total) so multi-day passes count each day (not just 1 per transaction)
                 all_query = dailypass_session.query(
-                    func.count().label('total_purchases'),
+                    func.coalesce(func.sum(DailyPass.days_total), 0).label('total_purchases'),
                     func.count(distinct(DailyPass.client_id)).label('total_unique_users')
+                ).join(
+                    Gym, Gym.gym_id == func.cast(DailyPass.gym_id, Integer), isouter=False
                 ).filter(
                     func.date(DailyPass.created_at) >= start_date_obj,
                     func.date(DailyPass.created_at) <= end_date_obj,
-                    DailyPass.gym_id != "1"  # Exclude gym_id = 1
+                    DailyPass.gym_id != "1"
                 )
 
                 # Apply gym filter if provided
                 if gym_id:
-                    # Try both string and integer comparison
                     gym_id_str = str(gym_id)
-                    gym_id_int = int(gym_id)
-                    all_query = all_query.filter(
-                        (DailyPass.gym_id == gym_id_str)
-                    )
+                    all_query = all_query.filter(DailyPass.gym_id == gym_id_str)
                     logging.info(f"Daily pass query with gym filter: gym_id_str={gym_id_str}")
 
                 # Apply location filter if provided
@@ -1890,14 +1890,17 @@ async def get_purchase_analytics(
                     category_breakdown["daily_pass"]["purchases"] = total_result.total_purchases or 0
                     category_breakdown["daily_pass"]["unique_users"] = total_result.total_unique_users or 0
 
-                # Build separate query for purchases over time (grouped by date)
+                # Build separate query for purchases over time (grouped by date) — same Gym JOIN
+                # GMV fix: SUM(days_total) so multi-day passes count each day in time-series too
                 base_query = dailypass_session.query(
                     func.date(DailyPass.created_at).label('purchase_date'),
-                    func.count().label('purchase_count')
+                    func.coalesce(func.sum(DailyPass.days_total), 0).label('purchase_count')
+                ).join(
+                    Gym, Gym.gym_id == func.cast(DailyPass.gym_id, Integer), isouter=False
                 ).filter(
                     func.date(DailyPass.created_at) >= start_date_obj,
                     func.date(DailyPass.created_at) <= end_date_obj,
-                    DailyPass.gym_id != "1"  # Exclude gym_id = 1
+                    DailyPass.gym_id != "1"
                 )
 
                 # Apply gym filter if provided
@@ -1982,43 +1985,29 @@ async def get_purchase_analytics(
                 logging.info(f"Daily pass gym_purchases: {gym_purchases}")
 
                 # Get location-wise purchases (only when no location filter is applied)
+                # GMV fix: add Gym INNER JOIN so orphaned DailyPass records are excluded
                 if not location or location == "all":
                     try:
-                        # Query to get location-wise purchase counts
-                        location_query = dailypass_session.query(
-                            func.count().label('purchase_count')
-                        ).filter(
-                            func.date(DailyPass.created_at) >= start_date_obj,
-                            func.date(DailyPass.created_at) <= end_date_obj,
-                            DailyPass.client_id.isnot(None),
-                            DailyPass.gym_id != "1"  # Exclude gym_id = 1
-                        )
-
-                        # Apply gym filter if provided
-                        if gym_id:
-                            location_query = location_query.filter(DailyPass.gym_id == str(gym_id))
-
-                        # Get all DailyPass records in the date range to map client_id to location
+                        # Get all DailyPass client_ids — with Gym JOIN to exclude orphans
                         daily_pass_records = dailypass_session.query(
                             DailyPass.client_id
+                        ).join(
+                            Gym, Gym.gym_id == func.cast(DailyPass.gym_id, Integer), isouter=False
                         ).filter(
                             func.date(DailyPass.created_at) >= start_date_obj,
                             func.date(DailyPass.created_at) <= end_date_obj,
                             DailyPass.client_id.isnot(None),
-                            DailyPass.gym_id != "1"  # Exclude gym_id = 1
+                            DailyPass.gym_id != "1"
                         )
 
-                        # Apply gym filter if provided
                         if gym_id:
                             daily_pass_records = daily_pass_records.filter(DailyPass.gym_id == str(gym_id))
 
                         daily_pass_records = daily_pass_records.all()
 
-                        # Get unique client_ids
                         client_ids = list(set([str(r.client_id) for r in daily_pass_records if r.client_id]))
 
                         if client_ids:
-                            # Query Client table to get locations
                             client_location_stmt = select(Client.client_id, Client.location).where(
                                 Client.client_id.in_(client_ids),
                                 Client.location.isnot(None),
@@ -2027,11 +2016,9 @@ async def get_purchase_analytics(
                             client_location_result = await db.execute(client_location_stmt)
                             client_locations = {str(row[0]): row[1] for row in client_location_result.all()}
 
-                            # Count purchases per location (normalize location names)
                             for record in daily_pass_records:
                                 if record.client_id and str(record.client_id) in client_locations:
                                     raw_loc = client_locations[str(record.client_id)]
-                                    # Normalize location: trim whitespace and replace spaces with underscores
                                     normalized_loc = raw_loc.strip().replace(' ', '_')
                                     if normalized_loc not in location_purchases:
                                         location_purchases[normalized_loc] = 0
@@ -2041,6 +2028,7 @@ async def get_purchase_analytics(
                         import logging
                         logging.error(f"Error getting location-wise daily pass purchases: {str(e)}")
 
+
                 dailypass_session.close()
             except Exception as e:
                 # Log error for debugging daily pass purchases
@@ -2048,30 +2036,33 @@ async def get_purchase_analytics(
                 logging.error(f"Purchase analytics - Daily pass error: {str(e)}")
                 pass
 
-        # 2. SESSION PURCHASES - Separate queries for totals and time-series
+        # 2. SESSION PURCHASES - Use SessionPurchase (status='paid') + Gym INNER JOIN (matches GMV logic)
         if not source or source == "sessions":
             try:
-                # First, get total counts without grouping
+                # GMV fix: SessionPurchase with status='paid' + INNER JOIN Gym (no orphans)
+                # SUM(sessions_count) so multi-class purchases count all classes (not just 1 per transaction)
                 total_stmt = (
                     select(
-                        func.count().label('total_purchases'),
-                        func.count(distinct(SessionBookingDay.client_id)).label('total_unique_users')
+                        func.coalesce(func.sum(SessionPurchase.sessions_count), 0).label('total_purchases'),
+                        func.count(distinct(SessionPurchase.client_id)).label('total_unique_users')
                     )
-                    .select_from(SessionBookingDay)
+                    .select_from(SessionPurchase)
+                    .join(Gym, SessionPurchase.gym_id == Gym.gym_id)
                     .where(
-                        func.date(SessionBookingDay.booking_date) >= start_date_obj,
-                        func.date(SessionBookingDay.booking_date) <= end_date_obj,
-                        SessionBookingDay.gym_id != 1  # Exclude gym_id = 1
+                        SessionPurchase.status == "paid",
+                        SessionPurchase.gym_id != 1,
+                        func.date(SessionPurchase.created_at) >= start_date_obj,
+                        func.date(SessionPurchase.created_at) <= end_date_obj,
                     )
                 )
 
                 # Apply gym filter if provided
                 if gym_id:
-                    total_stmt = total_stmt.where(SessionBookingDay.gym_id == gym_id)
+                    total_stmt = total_stmt.where(SessionPurchase.gym_id == gym_id)
 
                 # Apply location filter if provided
                 if location_client_ids:
-                    total_stmt = total_stmt.where(SessionBookingDay.client_id.in_(location_client_ids))
+                    total_stmt = total_stmt.where(SessionPurchase.client_id.in_(location_client_ids))
 
                 total_result = await db.execute(total_stmt)
                 total_row = total_result.first()
@@ -2080,30 +2071,33 @@ async def get_purchase_analytics(
                     category_breakdown["sessions"]["purchases"] = total_row.total_purchases or 0
                     category_breakdown["sessions"]["unique_users"] = total_row.total_unique_users or 0
 
-                # Then get purchases over time (grouped by date)
+                # Then get purchases over time (grouped by date) — same model/filters
+                # GMV fix: SUM(sessions_count) per day in time-series
                 time_stmt = (
                     select(
-                        func.date(SessionBookingDay.booking_date).label('purchase_date'),
-                        func.count().label('purchase_count')
+                        func.date(SessionPurchase.created_at).label('purchase_date'),
+                        func.coalesce(func.sum(SessionPurchase.sessions_count), 0).label('purchase_count')
                     )
-                    .select_from(SessionBookingDay)
+                    .select_from(SessionPurchase)
+                    .join(Gym, SessionPurchase.gym_id == Gym.gym_id)
                     .where(
-                        func.date(SessionBookingDay.booking_date) >= start_date_obj,
-                        func.date(SessionBookingDay.booking_date) <= end_date_obj,
-                        SessionBookingDay.gym_id != 1  # Exclude gym_id = 1
+                        SessionPurchase.status == "paid",
+                        SessionPurchase.gym_id != 1,
+                        func.date(SessionPurchase.created_at) >= start_date_obj,
+                        func.date(SessionPurchase.created_at) <= end_date_obj,
                     )
                 )
 
                 # Apply gym filter if provided
                 if gym_id:
-                    time_stmt = time_stmt.where(SessionBookingDay.gym_id == gym_id)
+                    time_stmt = time_stmt.where(SessionPurchase.gym_id == gym_id)
 
                 # Apply location filter if provided
                 if location_client_ids:
-                    time_stmt = time_stmt.where(SessionBookingDay.client_id.in_(location_client_ids))
+                    time_stmt = time_stmt.where(SessionPurchase.client_id.in_(location_client_ids))
 
                 # Group by date and execute
-                time_stmt = time_stmt.group_by(func.date(SessionBookingDay.booking_date))
+                time_stmt = time_stmt.group_by(func.date(SessionPurchase.created_at))
                 time_result = await db.execute(time_stmt)
                 session_results = time_result.all()
 
@@ -2123,23 +2117,22 @@ async def get_purchase_analytics(
                 # Sort purchases over time by date
                 category_breakdown["sessions"]["purchases_over_time"].sort(key=lambda x: x["date"])
 
-                # Get gym-wise purchases
-                # When gym filter is applied, track just that gym; otherwise get all gyms
+                # Get gym-wise purchases — same SessionPurchase model
                 if gym_id:
-                    # Track purchases for the filtered gym
                     gym_count_stmt = (
                         select(func.count().label('purchase_count'))
-                        .select_from(SessionBookingDay)
+                        .select_from(SessionPurchase)
+                        .join(Gym, SessionPurchase.gym_id == Gym.gym_id)
                         .where(
-                            func.date(SessionBookingDay.booking_date) >= start_date_obj,
-                            func.date(SessionBookingDay.booking_date) <= end_date_obj,
-                            SessionBookingDay.gym_id == gym_id
+                            SessionPurchase.status == "paid",
+                            func.date(SessionPurchase.created_at) >= start_date_obj,
+                            func.date(SessionPurchase.created_at) <= end_date_obj,
+                            SessionPurchase.gym_id == gym_id
                         )
                     )
 
-                    # Apply location filter if provided
                     if location_client_ids:
-                        gym_count_stmt = gym_count_stmt.where(SessionBookingDay.client_id.in_(location_client_ids))
+                        gym_count_stmt = gym_count_stmt.where(SessionPurchase.client_id.in_(location_client_ids))
 
                     gym_count_result = await db.execute(gym_count_stmt)
                     gym_count_row = gym_count_result.first()
@@ -2151,26 +2144,26 @@ async def get_purchase_analytics(
                         gym_purchases[gym_key] += gym_count_row.purchase_count
                         logging.info(f"Sessions for gym {gym_id}: {gym_count_row.purchase_count} purchases")
                 else:
-                    # Get all gyms when no filter
                     gym_wise_stmt = (
                         select(
-                            SessionBookingDay.gym_id,
+                            SessionPurchase.gym_id,
                             func.count().label('purchase_count')
                         )
-                        .select_from(SessionBookingDay)
+                        .select_from(SessionPurchase)
+                        .join(Gym, SessionPurchase.gym_id == Gym.gym_id)
                         .where(
-                            func.date(SessionBookingDay.booking_date) >= start_date_obj,
-                            func.date(SessionBookingDay.booking_date) <= end_date_obj,
-                            SessionBookingDay.gym_id.isnot(None),
-                            SessionBookingDay.gym_id != 1  # Exclude gym_id = 1
+                            SessionPurchase.status == "paid",
+                            func.date(SessionPurchase.created_at) >= start_date_obj,
+                            func.date(SessionPurchase.created_at) <= end_date_obj,
+                            SessionPurchase.gym_id.isnot(None),
+                            SessionPurchase.gym_id != 1
                         )
                     )
 
-                    # Apply location filter if provided
                     if location_client_ids:
-                        gym_wise_stmt = gym_wise_stmt.where(SessionBookingDay.client_id.in_(location_client_ids))
+                        gym_wise_stmt = gym_wise_stmt.where(SessionPurchase.client_id.in_(location_client_ids))
 
-                    gym_wise_stmt = gym_wise_stmt.group_by(SessionBookingDay.gym_id)
+                    gym_wise_stmt = gym_wise_stmt.group_by(SessionPurchase.gym_id)
                     gym_wise_result = await db.execute(gym_wise_stmt)
                     gym_wise_rows = gym_wise_result.all()
 
@@ -2183,25 +2176,24 @@ async def get_purchase_analytics(
                 # Get location-wise purchases (only when no location filter is applied)
                 if not location or location == "all":
                     try:
-                        # Query to get all session booking records in the date range
                         session_records_stmt = (
-                            select(SessionBookingDay.client_id)
-                            .select_from(SessionBookingDay)
+                            select(SessionPurchase.client_id)
+                            .select_from(SessionPurchase)
+                            .join(Gym, SessionPurchase.gym_id == Gym.gym_id)
                             .where(
-                                func.date(SessionBookingDay.booking_date) >= start_date_obj,
-                                func.date(SessionBookingDay.booking_date) <= end_date_obj,
-                                SessionBookingDay.client_id.isnot(None),
-                                SessionBookingDay.gym_id != 1  # Exclude gym_id = 1
+                                SessionPurchase.status == "paid",
+                                func.date(SessionPurchase.created_at) >= start_date_obj,
+                                func.date(SessionPurchase.created_at) <= end_date_obj,
+                                SessionPurchase.client_id.isnot(None),
+                                SessionPurchase.gym_id != 1
                             )
                         )
 
-                        # Apply gym filter if provided
                         if gym_id:
-                            session_records_stmt = session_records_stmt.where(SessionBookingDay.gym_id == gym_id)
+                            session_records_stmt = session_records_stmt.where(SessionPurchase.gym_id == gym_id)
 
-                        # Apply location filter if provided
                         if location_client_ids:
-                            session_records_stmt = session_records_stmt.where(SessionBookingDay.client_id.in_(location_client_ids))
+                            session_records_stmt = session_records_stmt.where(SessionPurchase.client_id.in_(location_client_ids))
 
                         session_records_result = await db.execute(session_records_stmt)
                         session_records = session_records_result.all()
@@ -2237,26 +2229,27 @@ async def get_purchase_analytics(
                 pass
 
         # 3. NUTRITIONIST PLAN (FITTBOT SUBSCRIPTION) PURCHASES
-        # NEW LOGIC: Query payments.payments table where payment_metadata['flow'] = 'nutrition_purchase_googleplay'
+        # GMV fix: added excluded contacts filter to match gmv-summary logic
         # NOTE: Skip when gym filter is applied (not gym-specific purchases)
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
         if (not source or source == "fittbot_subscription") and not gym_id:
             try:
-                # Query nutritionist plan purchases with aggregations
                 nutritionist_stmt = (
                     select(
                         func.date(Payment.captured_at).label('purchase_date'),
                         func.count().label('purchase_count'),
                         func.count(distinct(Payment.customer_id)).label('unique_users')
                     )
+                    .select_from(Payment)
+                    .outerjoin(Client, Payment.customer_id == Client.client_id)
                     .where(Payment.status == "captured")
                     .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
                     .where(func.date(Payment.captured_at) >= start_date_obj)
                     .where(func.date(Payment.captured_at) <= end_date_obj)
+                    .where(~Client.contact.in_(EXCLUDED_CONTACTS))
                 )
 
-                # Apply location filter if provided
                 if location_client_ids:
-                    # Convert client_ids to strings for comparison with customer_id
                     location_customer_ids = {str(cid) for cid in location_client_ids}
                     nutritionist_stmt = nutritionist_stmt.where(Payment.customer_id.in_(location_customer_ids))
 
@@ -2265,16 +2258,18 @@ async def get_purchase_analytics(
                 result = await db.execute(nutritionist_stmt)
                 nutritionist_results = result.all()
 
-                # Get total unique users across all dates - separate query
+                # Get total unique users across all dates
                 unique_users_stmt = (
                     select(func.count(distinct(Payment.customer_id)))
+                    .select_from(Payment)
+                    .outerjoin(Client, Payment.customer_id == Client.client_id)
                     .where(Payment.status == "captured")
                     .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
                     .where(func.date(Payment.captured_at) >= start_date_obj)
                     .where(func.date(Payment.captured_at) <= end_date_obj)
+                    .where(~Client.contact.in_(EXCLUDED_CONTACTS))
                 )
 
-                # Apply location filter if provided
                 if location_client_ids:
                     location_customer_ids = {str(cid) for cid in location_client_ids}
                     unique_users_stmt = unique_users_stmt.where(Payment.customer_id.in_(location_customer_ids))
@@ -2305,26 +2300,26 @@ async def get_purchase_analytics(
                 pass
 
         # 3.5. AI CREDITS PURCHASES
-        # NEW LOGIC: Query payments.payments table where payment_metadata['flow'] contains 'food_scanner_credits'
+        # GMV fix: added excluded contacts filter to match gmv-summary logic
         # NOTE: Skip when gym filter is applied (not gym-specific purchases)
         if (not source or source == "ai_credits") and not gym_id:
             try:
-                # Query AI Credits purchases with aggregations
                 ai_credits_stmt = (
                     select(
                         func.date(Payment.captured_at).label('purchase_date'),
                         func.count().label('purchase_count'),
                         func.count(distinct(Payment.customer_id)).label('unique_users')
                     )
+                    .select_from(Payment)
+                    .outerjoin(Client, Payment.customer_id == Client.client_id)
                     .where(Payment.status == "captured")
                     .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'food_scanner_credits')
                     .where(func.date(Payment.captured_at) >= start_date_obj)
                     .where(func.date(Payment.captured_at) <= end_date_obj)
+                    .where(~Client.contact.in_(EXCLUDED_CONTACTS))
                 )
 
-                # Apply location filter if provided
                 if location_client_ids:
-                    # Convert client_ids to strings for comparison with customer_id
                     location_customer_ids = {str(cid) for cid in location_client_ids}
                     ai_credits_stmt = ai_credits_stmt.where(Payment.customer_id.in_(location_customer_ids))
 
@@ -2333,16 +2328,18 @@ async def get_purchase_analytics(
                 result = await db.execute(ai_credits_stmt)
                 ai_credits_results = result.all()
 
-                # Get total unique users across all dates - separate query
+                # Get total unique users across all dates
                 ai_credits_unique_users_stmt = (
                     select(func.count(distinct(Payment.customer_id)))
+                    .select_from(Payment)
+                    .outerjoin(Client, Payment.customer_id == Client.client_id)
                     .where(Payment.status == "captured")
                     .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'food_scanner_credits')
                     .where(func.date(Payment.captured_at) >= start_date_obj)
                     .where(func.date(Payment.captured_at) <= end_date_obj)
+                    .where(~Client.contact.in_(EXCLUDED_CONTACTS))
                 )
 
-                # Apply location filter if provided
                 if location_client_ids:
                     location_customer_ids = {str(cid) for cid in location_client_ids}
                     ai_credits_unique_users_stmt = ai_credits_unique_users_stmt.where(Payment.customer_id.in_(location_customer_ids))
@@ -2372,180 +2369,127 @@ async def get_purchase_analytics(
                 logging.error(f"Purchase analytics - AI Credits error: {str(e)}")
                 pass
 
-        # 4. GYM MEMBERSHIP PURCHASES - Filtered by metadata conditions
+        # 4. GYM MEMBERSHIP PURCHASES
+        # GMV fix: SQL EXISTS subquery with Gym JOIN + Client JOIN (replaces Python-loop in-memory filtering)
         if not source or source == "gym_membership":
             try:
-                # We fetch the data and filter in memory for the specific metadata conditions
-                # since JSON filtering varies by database
-                filtered_daily_data = {}
-
-                # Get the actual payments with order data for metadata filtering
-                payment_order_stmt = (
-                    select(Payment, Order)
-                    .join(Order, Order.id == Payment.order_id)
-                    .where(Payment.status == "captured")
-                    .where(Order.status == "paid")
-                    .where(func.date(Payment.captured_at) >= start_date_obj)
-                    .where(func.date(Payment.captured_at) <= end_date_obj)
+                gym_meta_cond = or_(
+                    func.json_unquote(func.json_extract(Order.order_metadata, "$.audit.source")) == "dailypass_checkout_api",
+                    func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_sub",
+                    func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_free_fittbot"
                 )
 
-                # Apply gym filter if provided
+                # EXISTS on OrderItem + Gym JOIN — confirms gym physically exists
+                gym_exists_cond = (
+                    select(1)
+                    .select_from(OrderItem)
+                    .join(Gym, Gym.gym_id == cast(OrderItem.gym_id, Integer))
+                    .where(
+                        OrderItem.order_id == Order.id,
+                        OrderItem.gym_id.isnot(None),
+                        OrderItem.gym_id != "",
+                        OrderItem.gym_id != "1"
+                    )
+                    .exists()
+                )
+
+                gm_base_conditions = [
+                    Payment.status == "captured",
+                    Order.status == "paid",
+                    Order.customer_id.isnot(None),
+                    gym_meta_cond,
+                    gym_exists_cond,
+                    func.date(Payment.captured_at) >= start_date_obj,
+                    func.date(Payment.captured_at) <= end_date_obj,
+                ]
+
                 if gym_id:
-                    OrderItemAlias = aliased(OrderItem)
-                    payment_order_stmt = (
-                        select(Payment, Order)
-                        .join(Order, Order.id == Payment.order_id)
-                        .join(OrderItemAlias, OrderItemAlias.order_id == Order.id)
-                        .where(Payment.status == "captured")
-                        .where(Order.status == "paid")
-                        .where(OrderItemAlias.gym_id == str(gym_id))
-                        .where(func.date(Payment.captured_at) >= start_date_obj)
-                        .where(func.date(Payment.captured_at) <= end_date_obj)
+                    gm_base_conditions.append(
+                        select(1).select_from(OrderItem)
+                        .where(OrderItem.order_id == Order.id, OrderItem.gym_id == str(gym_id))
+                        .exists()
                     )
 
-                # Apply location filter if provided
                 if location_client_ids:
                     location_customer_ids = {str(cid) for cid in location_client_ids}
-                    payment_order_stmt = payment_order_stmt.where(Order.customer_id.in_(location_customer_ids))
+                    gm_base_conditions.append(Order.customer_id.in_(location_customer_ids))
 
-                payment_result = await db.execute(payment_order_stmt)
-                payment_orders = payment_result.all()
-
-                # Fetch order items to get gym_ids for gym-wise tracking
-                order_ids = [row.Order.id for row in payment_orders]
-                order_gym_mapping = {}
-                if order_ids and not gym_id:
-                    order_items_stmt = (
-                        select(OrderItem)
-                        .where(OrderItem.order_id.in_(order_ids))
-                        .where(OrderItem.gym_id.isnot(None))
-                        .where(OrderItem.gym_id != "1")  # Exclude gym_id = 1
+                # Deduped subquery for counts
+                gm_subq = (
+                    select(
+                        Order.id.label("order_id"),
+                        Payment.captured_at.label("captured_at"),
+                        Order.customer_id.label("customer_id")
                     )
-                    order_items_result = await db.execute(order_items_stmt)
-                    order_items = order_items_result.scalars().all()
+                    .select_from(Payment)
+                    .join(Order, Order.id == Payment.order_id)
+                    .join(Client, Client.client_id == cast(Order.customer_id, Integer))
+                    .where(*gm_base_conditions)
+                    .distinct()
+                    .subquery()
+                )
 
-                    for item in order_items:
-                        if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
-                            gym_id_int = int(item.gym_id)
-                            if gym_id_int != 1:  # Exclude gym_id = 1
-                                order_gym_mapping[item.order_id] = gym_id_int
+                gm_total_stmt = select(
+                    func.count(gm_subq.c.order_id).label("purchases"),
+                    func.count(distinct(gm_subq.c.customer_id)).label("unique_users")
+                ).select_from(gm_subq)
 
-                unique_customer_ids = set()
+                gm_total_result = await db.execute(gm_total_stmt)
+                gm_total_row = gm_total_result.one()
+                category_breakdown["gym_membership"]["purchases"] = gm_total_row.purchases or 0
+                category_breakdown["gym_membership"]["unique_users"] = gm_total_row.unique_users or 0
 
-                for payment, order in payment_orders:
-                    # Check metadata conditions
-                    if not order.order_metadata or not isinstance(order.order_metadata, dict):
-                        continue
-
-                    metadata = order.order_metadata
-
-                    condition1 = False
-                    if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
-                        if metadata["audit"].get("source") == "dailypass_checkout_api":
-                            condition1 = True
-
-                    condition2 = False
-                    if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                        if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
-                            condition2 = True
-
-                    condition3 = False
-                    if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                        if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
-                            condition3 = True
-
-                    if not (condition1 or condition2 or condition3):
-                        continue
-
-                    date_key = payment.captured_at.date().isoformat() if payment.captured_at else None
+                # Time-series
+                gm_time_stmt = (
+                    select(
+                        func.date(gm_subq.c.captured_at).label("purchase_date"),
+                        func.count().label("purchase_count")
+                    )
+                    .select_from(gm_subq)
+                    .group_by(func.date(gm_subq.c.captured_at))
+                )
+                gm_time_result = await db.execute(gm_time_stmt)
+                for row in gm_time_result.all():
+                    date_key = row.purchase_date.isoformat() if row.purchase_date else None
                     if date_key:
-                        if date_key not in filtered_daily_data:
-                            filtered_daily_data[date_key] = 0
-                        filtered_daily_data[date_key] += 1
-
                         if date_key not in all_purchases_over_time:
                             all_purchases_over_time[date_key] = 0
-                        all_purchases_over_time[date_key] += 1
+                        all_purchases_over_time[date_key] += row.purchase_count
+                        category_breakdown["gym_membership"]["purchases_over_time"].append({
+                            "date": date_key,
+                            "purchases": row.purchase_count
+                        })
+                category_breakdown["gym_membership"]["purchases_over_time"].sort(key=lambda x: x["date"])
 
-                    if order.customer_id:
-                        unique_customer_ids.add(order.customer_id)
-
-                    # Track gym-wise purchases
-                    if gym_id:
-                        # When gym filter is applied, track for that gym
-                        gym_key = int(gym_id)
-                        if gym_key not in gym_purchases:
-                            gym_purchases[gym_key] = 0
-                        gym_purchases[gym_key] += 1
-                    elif order.id in order_gym_mapping:
-                        # When no gym filter, track all gyms
-                        gym_key = order_gym_mapping[order.id]
-                        if gym_key not in gym_purchases:
-                            gym_purchases[gym_key] = 0
-                        gym_purchases[gym_key] += 1
-
-                # Get location-wise purchases for gym_membership (only when no location filter is applied)
+                # Location tracking — re-added: get Client.location for each gym_membership order
                 if not location or location == "all":
                     try:
-                        # Get customer_ids from filtered gym membership orders
-                        customer_ids = [order.customer_id for payment, order in payment_orders if order.customer_id]
+                        gm_customer_ids_stmt = select(gm_subq.c.customer_id).select_from(gm_subq)
+                        gm_customer_ids_result = await db.execute(gm_customer_ids_stmt)
+                        gm_customer_ids = list(set([str(row[0]) for row in gm_customer_ids_result.all() if row[0]]))
 
-                        if customer_ids:
-                            # Query Client table to get locations
-                            client_location_stmt = select(Client.client_id, Client.location).where(
-                                Client.client_id.in_(customer_ids),
+                        if gm_customer_ids:
+                            gm_loc_stmt = select(Client.client_id, Client.location).where(
+                                Client.client_id.in_(gm_customer_ids),
                                 Client.location.isnot(None),
                                 Client.location != ''
                             )
-                            client_location_result = await db.execute(client_location_stmt)
-                            client_locations = {str(row[0]): row[1] for row in client_location_result.all()}
+                            gm_loc_result = await db.execute(gm_loc_stmt)
+                            gm_client_locations = {str(row[0]): row[1] for row in gm_loc_result.all()}
 
-                            # Count purchases per location
-                            for payment, order in payment_orders:
-                                if order.customer_id and str(order.customer_id) in client_locations:
-                                    # Check if this order matches gym membership conditions
-                                    if not order.order_metadata or not isinstance(order.order_metadata, dict):
-                                        continue
-
-                                    metadata = order.order_metadata
-                                    condition1 = False
-                                    if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
-                                        if metadata["audit"].get("source") == "dailypass_checkout_api":
-                                            condition1 = True
-
-                                    condition2 = False
-                                    if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                                        if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
-                                            condition2 = True
-
-                                    condition3 = False
-                                    if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                                        if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
-                                            condition3 = True
-
-                                    if condition1 or condition2 or condition3:
-                                        raw_loc = client_locations[str(order.customer_id)]
-                                        # Normalize location: trim whitespace and replace spaces with underscores
-                                        normalized_loc = raw_loc.strip().replace(' ', '_')
-                                        if normalized_loc not in location_purchases:
-                                            location_purchases[normalized_loc] = 0
-                                        location_purchases[normalized_loc] += 1
-
+                            for cid in gm_customer_ids:
+                                if cid in gm_client_locations:
+                                    normalized_loc = gm_client_locations[cid].strip().replace(' ', '_')
+                                    if normalized_loc not in location_purchases:
+                                        location_purchases[normalized_loc] = 0
+                                    location_purchases[normalized_loc] += 1
                     except Exception as e:
                         import logging
                         logging.error(f"Error getting location-wise gym membership purchases: {str(e)}")
 
-                # Build purchases over time
-                for date_key, count in sorted(filtered_daily_data.items()):
-                    category_breakdown["gym_membership"]["purchases_over_time"].append({
-                        "date": date_key,
-                        "purchases": count
-                    })
-
-                category_breakdown["gym_membership"]["purchases"] = sum(filtered_daily_data.values())
-                category_breakdown["gym_membership"]["unique_users"] = len(unique_customer_ids)
-
-            except Exception:
+            except Exception as e:
+                import logging
+                logging.error(f"Purchase analytics - Gym Membership error: {str(e)}")
                 pass
 
         # Convert all purchases over time to sorted array
@@ -2614,65 +2558,187 @@ async def get_purchase_analytics(
             ]
             logging.info(f"Location breakdown: {location_breakdown}")
 
-        # Build revenue by city breakdown (group by Gym.city, sum Order.gross_amount_minor)
-        # Apply all filters: date range, gym_id, source
+        # Build revenue by city breakdown — uses same GMV source logic as compute_gmv_totals()
+        # Sums revenue from all 5 sources grouped by Gym.city
         revenue_by_city = []
         try:
-            valid_types_condition = or_(
-                Gym.type == "green",
-                Gym.type == "red",
-                Gym.type == "hold",
-                Gym.type.is_(None)
-            )
+            EXCLUDED_CONTACTS_SET = ["7373675762", "9486987082", "8667458723", "9840633149"]
+            city_revenue_map = {}  # city -> total_revenue (rupees)
 
-            # Build base conditions for the query
-            city_revenue_conditions = and_(
-                valid_types_condition,
-                Order.status == "paid"
-            )
+            # ── 1. Daily Pass ────────────────────────────────────────────────────
+            try:
+                _dp_session = get_dailypass_session()
+                dp_city_q = (
+                    _dp_session.query(
+                        Gym.city.label("city"),
+                        func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("revenue")
+                    )
+                    .join(Gym, Gym.gym_id == func.cast(DailyPass.gym_id, Integer), isouter=False)
+                    .outerjoin(Payment, DailyPass.payment_id == Payment.provider_payment_id)
+                    .filter(
+                        DailyPass.gym_id != "1",
+                        func.date(DailyPass.created_at) >= start_date_obj,
+                        func.date(DailyPass.created_at) <= end_date_obj,
+                    )
+                    .group_by(Gym.city)
+                )
+                if gym_id:
+                    dp_city_q = dp_city_q.filter(DailyPass.gym_id == str(gym_id))
+                for row in dp_city_q.all():
+                    city = (row.city or "Unknown").strip()
+                    city_revenue_map[city] = city_revenue_map.get(city, 0) + float(row.revenue or 0)
+                _dp_session.close()
+            except Exception as e:
+                logging.error(f"[RevCity] daily_pass error: {e}")
 
-            # Apply date filter if provided
-            if start_date_obj and end_date_obj:
-                city_revenue_conditions = and_(
-                    city_revenue_conditions,
-                    func.date(Order.created_at) >= start_date_obj,
-                    func.date(Order.created_at) <= end_date_obj
+            # ── 2. Sessions (SessionPurchase) ────────────────────────────────────
+            try:
+                sess_city_stmt = (
+                    select(
+                        func.coalesce(Gym.city, "Unknown").label("city"),
+                        func.coalesce(func.sum(SessionPurchase.payable_rupees), 0).label("revenue")
+                    )
+                    .select_from(SessionPurchase)
+                    .join(Gym, SessionPurchase.gym_id == Gym.gym_id)
+                    .where(
+                        SessionPurchase.status == "paid",
+                        SessionPurchase.gym_id != 1,
+                        func.date(SessionPurchase.created_at) >= start_date_obj,
+                        func.date(SessionPurchase.created_at) <= end_date_obj,
+                    )
+                    .group_by(Gym.city)
+                )
+                if gym_id:
+                    sess_city_stmt = sess_city_stmt.where(SessionPurchase.gym_id == gym_id)
+                sess_city_result = await db.execute(sess_city_stmt)
+                for row in sess_city_result.all():
+                    city = (row.city or "Unknown").strip()
+                    city_revenue_map[city] = city_revenue_map.get(city, 0) + float(row.revenue or 0)
+            except Exception as e:
+                logging.error(f"[RevCity] sessions error: {e}")
+
+            # ── 3. Nutrition Plans ───────────────────────────────────────────────
+            # No city/gym dimension — assign to "App" bucket
+            try:
+                nutri_city_stmt = (
+                    select(func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("revenue"))
+                    .select_from(Payment)
+                    .outerjoin(Client, Payment.customer_id == Client.client_id)
+                    .where(
+                        Payment.status == "captured",
+                        func.json_extract(Payment.payment_metadata, "$.flow") == "nutrition_purchase_googleplay",
+                        func.date(Payment.captured_at) >= start_date_obj,
+                        func.date(Payment.captured_at) <= end_date_obj,
+                        ~Client.contact.in_(EXCLUDED_CONTACTS_SET),
+                    )
+                )
+                nutri_result = await db.execute(nutri_city_stmt)
+                nutri_rev = float(nutri_result.scalar() or 0)
+                if nutri_rev > 0:
+                    city_revenue_map["App"] = city_revenue_map.get("App", 0) + nutri_rev
+            except Exception as e:
+                logging.error(f"[RevCity] nutrition error: {e}")
+
+            # ── 4. AI Credits ────────────────────────────────────────────────────
+            # No city/gym dimension — assign to "App" bucket
+            try:
+                ai_city_stmt = (
+                    select(func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("revenue"))
+                    .select_from(Payment)
+                    .outerjoin(Client, Payment.customer_id == Client.client_id)
+                    .where(
+                        Payment.status == "captured",
+                        func.json_extract(Payment.payment_metadata, "$.flow") == "food_scanner_credits",
+                        func.date(Payment.captured_at) >= start_date_obj,
+                        func.date(Payment.captured_at) <= end_date_obj,
+                        ~Client.contact.in_(EXCLUDED_CONTACTS_SET),
+                    )
+                )
+                ai_result = await db.execute(ai_city_stmt)
+                ai_rev = float(ai_result.scalar() or 0)
+                if ai_rev > 0:
+                    city_revenue_map["App"] = city_revenue_map.get("App", 0) + ai_rev
+            except Exception as e:
+                logging.error(f"[RevCity] ai_credits error: {e}")
+
+            # ── 5. Gym Membership ────────────────────────────────────────────────
+            try:
+                gm_meta_cond = or_(
+                    func.json_unquote(func.json_extract(Order.order_metadata, "$.audit.source")) == "dailypass_checkout_api",
+                    func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_sub",
+                    func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_free_fittbot",
+                )
+                gm_exists = (
+                    select(1)
+                    .select_from(OrderItem)
+                    .join(Gym, Gym.gym_id == cast(OrderItem.gym_id, Integer))
+                    .where(
+                        OrderItem.order_id == Order.id,
+                        OrderItem.gym_id.isnot(None),
+                        OrderItem.gym_id != "",
+                        OrderItem.gym_id != "1",
+                    )
+                    .exists()
+                )
+                gm_city_conditions = [
+                    Payment.status == "captured",
+                    Order.status == "paid",
+                    Order.customer_id.isnot(None),
+                    gm_meta_cond,
+                    gm_exists,
+                    func.date(Payment.captured_at) >= start_date_obj,
+                    func.date(Payment.captured_at) <= end_date_obj,
+                ]
+                if gym_id:
+                    gm_city_conditions.append(
+                        select(1).select_from(OrderItem)
+                        .where(OrderItem.order_id == Order.id, OrderItem.gym_id == str(gym_id))
+                        .exists()
+                    )
+
+                # Join through OrderItem to get the gym, then Gym.city
+                gm_city_subq = (
+                    select(
+                        Order.id.label("order_id"),
+                        Order.gross_amount_minor.label("gross_amount_minor"),
+                        OrderItem.gym_id.label("item_gym_id"),
+                    )
+                    .select_from(Payment)
+                    .join(Order, Order.id == Payment.order_id)
+                    .join(Client, Client.client_id == cast(Order.customer_id, Integer))
+                    .join(OrderItem, and_(
+                        OrderItem.order_id == Order.id,
+                        OrderItem.gym_id.isnot(None),
+                        OrderItem.gym_id != "",
+                        OrderItem.gym_id != "1",
+                    ))
+                    .where(*gm_city_conditions)
+                    .distinct()
+                    .subquery()
                 )
 
-            # Apply gym filter if provided
-            if gym_id:
-                city_revenue_conditions = and_(
-                    city_revenue_conditions,
-                    Gym.gym_id == func.cast(str(gym_id), String(100))
+                gm_city_stmt = (
+                    select(
+                        func.coalesce(Gym.city, "Unknown").label("city"),
+                        func.coalesce(func.sum(gm_city_subq.c.gross_amount_minor / 100.0), 0).label("revenue"),
+                    )
+                    .select_from(gm_city_subq)
+                    .join(Gym, Gym.gym_id == cast(gm_city_subq.c.item_gym_id, Integer))
+                    .group_by(Gym.city)
                 )
+                gm_city_result = await db.execute(gm_city_stmt)
+                for row in gm_city_result.all():
+                    city = (row.city or "Unknown").strip()
+                    city_revenue_map[city] = city_revenue_map.get(city, 0) + float(row.revenue or 0)
+            except Exception as e:
+                logging.error(f"[RevCity] gym_membership error: {e}")
 
-            city_revenue_query = select(
-                func.coalesce(Gym.city, "Unknown").label("city"),
-                func.coalesce(func.sum(Order.gross_amount_minor), 0).label("total_amount_minor")
-            ).join(
-                OrderItem, OrderItem.gym_id == func.cast(Gym.gym_id, String(100))
-            ).join(
-                Order, Order.id == OrderItem.order_id
-            ).where(
-                city_revenue_conditions
-            ).group_by(
-                Gym.city
-            ).order_by(
-                desc("total_amount_minor")
-            )
-
-            result = await db.execute(city_revenue_query)
-            rows = result.all()
-
-            logging.info(f"Revenue by city query returned {len(rows)} rows")
-            for row in rows:
-                logging.info(f"  City: {row.city}, Amount: {row.total_amount_minor}")
-
-            revenue_by_city = [
-                {"city": row.city, "amount": float(row.total_amount_minor) / 100.0}
-                for row in rows
-                if row.city and row.city.strip()
-            ][:20]
+            # Build sorted output
+            revenue_by_city = sorted(
+                [{"city": city, "amount": round(amt, 2)} for city, amt in city_revenue_map.items() if city],
+                key=lambda x: x["amount"],
+                reverse=True
+            )[:20]
 
             logging.info(f"Final revenue_by_city: {revenue_by_city}")
 
@@ -2680,6 +2746,7 @@ async def get_purchase_analytics(
             logging.error(f"Error building revenue_by_city: {str(e)}")
             import traceback
             traceback.print_exc()
+
 
         analytics_data = {
             "totalPurchases": total_purchases,
@@ -2825,7 +2892,7 @@ async def get_booking_averages(
             # Filter: payment_metadata['flow'] == 'nutrition_purchase_googleplay'
             # Exclude internal/test contacts: 7373675762, 9486987082, 8667458723
             try:
-                EXCLUDED_CONTACTS_NUTRI = ["7373675762", "9486987082", "8667458723"]
+                EXCLUDED_CONTACTS_NUTRI = ["7373675762", "9486987082", "8667458723", "9840633149"]
                 subscription_start = datetime.combine(start_date, datetime.min.time())
                 subscription_end = datetime.combine(end_date, datetime.min.time()).replace(hour=23, minute=59, second=59)
 
@@ -2852,7 +2919,7 @@ async def get_booking_averages(
             # Filter: payment_metadata['flow'] == 'food_scanner_credits' (exact match)
             # Exclude internal/test contacts: 7373675762, 9486987082, 8667458723
             try:
-                EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723"]
+                EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
                 ai_start = datetime.combine(start_date, datetime.min.time())
                 ai_end = datetime.combine(end_date, datetime.min.time()).replace(hour=23, minute=59, second=59)
 
