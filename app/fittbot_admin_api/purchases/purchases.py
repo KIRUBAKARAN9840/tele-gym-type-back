@@ -824,6 +824,32 @@ async def get_gmv_summary(
         gym_result = await db.execute(gym_stmt)
         gym_row = gym_result.one()
 
+        # ── AI Credits ──────────────────────────────────────────────────────────
+        # Table: payments.payments  |  Filter: $.flow == 'food_scanner_credits' (exact)
+        # Status: captured  |  Amount: amount_minor  |  Date: captured_at
+        # Excluded contacts: same internal/test numbers excluded from nutrition plans
+        ai_conditions = [
+            Payment.status == "captured",
+            func.json_extract(Payment.payment_metadata, "$.flow") == "food_scanner_credits"
+        ]
+        if start_date_obj:
+            ai_conditions.append(func.date(Payment.captured_at) >= start_date_obj)
+        if end_date_obj:
+            ai_conditions.append(func.date(Payment.captured_at) <= end_date_obj)
+
+        ai_stmt = (
+            select(
+                func.count(Payment.id).label("count"),
+                func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("total_revenue")
+            )
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(*ai_conditions)
+            .where(~Client.contact.in_(EXCLUDED_CONTACTS))
+        )
+        ai_result = await db.execute(ai_stmt)
+        ai_row = ai_result.one()
+
         return {
             "success": True,
             "data": {
@@ -842,6 +868,10 @@ async def get_gmv_summary(
                 "gym_membership": {
                     "count": gym_row.count,
                     "total_revenue": float(gym_row.total_revenue)
+                },
+                "ai_credits": {
+                    "count": ai_row.count,
+                    "total_revenue": float(ai_row.total_revenue)
                 }
             }
         }
@@ -852,6 +882,163 @@ async def get_gmv_summary(
         import logging
         logging.error(f"Error in get_gmv_summary: {str(e)}")
         raise HTTPException(status_code=500, detail="An error occurred while fetching GMV summary")
+
+
+
+@router.get("/ai-credits")
+async def get_ai_credits(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
+    search: Optional[str] = Query(None, description="Search by client name or mobile"),
+    start_date: Optional[str] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
+    sort_order: str = Query("desc", description="Sort order for purchase date"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Get list of AI Credits purchases.
+    Fetches from payments.payments table where payment_metadata['flow'] contains 'food_scanner_credits'.
+    Checks flow at two nesting levels: direct $.flow or $.order_info.flow.
+    Same logic as revenue_service.get_ai_credits_revenue() but as a paginated listing.
+    """
+    try:
+        import math
+
+        # Parse dates
+        start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+
+        # Metadata filter: $.flow == 'food_scanner_credits' (exact match, same as admindashboard.py)
+        # The data looks like: {"flow": "food_scanner_credits", "source": "verify_fallback", ...}
+        ai_flow_cond = func.json_extract(Payment.payment_metadata, "$.flow") == "food_scanner_credits"
+
+        # Excluded internal/test contacts (same list as nutrition plans and GMV)
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723"]
+
+        # Base query
+        query = (
+            select(
+                Payment.id.label("purchase_id"),
+                Payment.customer_id.label("customer_id"),
+                Payment.captured_at.label("purchased_at"),
+                Payment.amount_minor.label("amount_minor"),
+                Payment.payment_metadata.label("payment_metadata"),
+                Client.client_id.label("client_id"),
+                Client.name.label("client_name"),
+                Client.contact.label("client_contact"),
+            )
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(Payment.status == "captured")
+            .where(ai_flow_cond)
+            .where(~Client.contact.in_(EXCLUDED_CONTACTS))
+        )
+
+        # Date filters
+        if start_date_obj:
+            query = query.where(func.date(Payment.captured_at) >= start_date_obj)
+        if end_date_obj:
+            query = query.where(func.date(Payment.captured_at) <= end_date_obj)
+
+        # Search filter
+        if search:
+            search_term = f"%{search.lower()}%"
+            query = query.where(
+                or_(
+                    func.lower(Client.name).like(search_term),
+                    Client.contact.like(search_term)
+                )
+            )
+
+        # Total count
+        count_subquery = query.subquery()
+        count_stmt = select(func.count()).select_from(count_subquery)
+        count_result = await db.execute(count_stmt)
+        total_count = count_result.scalar() or 0
+
+        if total_count == 0:
+            return {
+                "success": True,
+                "data": {
+                    "purchases": [],
+                    "total": 0,
+                    "page": page,
+                    "limit": limit,
+                    "totalPages": 0,
+                    "hasNext": False,
+                    "hasPrev": False
+                },
+                "message": "No AI credits purchases found"
+            }
+
+        # Sort
+        if sort_order == "asc":
+            query = query.order_by(asc(Payment.captured_at))
+        else:
+            query = query.order_by(desc(Payment.captured_at))
+
+        # Paginate
+        offset = (page - 1) * limit
+        query = query.offset(offset).limit(limit)
+
+        result = await db.execute(query)
+        rows = result.all()
+
+        purchases = []
+        for row in rows:
+            purchased_date = row.purchased_at.strftime("%Y-%m-%d") if row.purchased_at else "N/A"
+            amount_rupees = float(row.amount_minor / 100) if row.amount_minor else 0.0
+
+            # Extract pack/credits info from payment_metadata if present
+            pack_info = "N/A"
+            if row.payment_metadata and isinstance(row.payment_metadata, dict):
+                meta = row.payment_metadata
+                # Try direct keys first
+                for key in ("credits", "pack", "plan", "pack_name", "credit_count"):
+                    if key in meta:
+                        pack_info = str(meta[key])
+                        break
+                # Try under order_info
+                if pack_info == "N/A" and isinstance(meta.get("order_info"), dict):
+                    for key in ("credits", "pack", "plan", "pack_name", "credit_count"):
+                        if key in meta["order_info"]:
+                            pack_info = str(meta["order_info"][key])
+                            break
+
+            purchases.append({
+                "id": row.purchase_id,
+                "customer_id": row.customer_id,
+                "client_id": row.client_id,
+                "client_name": row.client_name or "N/A",
+                "mobile": row.client_contact or "N/A",
+                "purchased_date": purchased_date,
+                "amount": amount_rupees,
+                "pack_info": pack_info,
+            })
+
+        total_pages = math.ceil(total_count / limit)
+
+        return {
+            "success": True,
+            "data": {
+                "purchases": purchases,
+                "total": total_count,
+                "page": page,
+                "limit": limit,
+                "totalPages": total_pages,
+                "hasNext": page < total_pages,
+                "hasPrev": page > 1
+            },
+            "message": "AI credits purchases fetched successfully"
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching AI credits purchases: {str(e)}"
+        )
 
 
 @router.get("/today-schedule")
