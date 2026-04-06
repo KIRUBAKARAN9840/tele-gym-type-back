@@ -755,10 +755,74 @@ async def get_gmv_summary(
             .select_from(Payment)
             .outerjoin(Client, Payment.customer_id == Client.client_id)
             .where(*nutri_conditions)
-            .where(~Client.contact.in_(EXCLUDED_CONTACTS))  # Exclude internal/test contacts
+            .where(~Client.contact.in_(EXCLUDED_CONTACTS))
         )
         nutri_result = await db.execute(nutri_stmt)
         nutri_row = nutri_result.one()
+
+        # ── Gym Membership ──────────────────────────────────────────────────────
+        # Mirrors the listing page validation:
+        # 1) Metadata filter (3 known flows via JSON extract)
+        # 2) EXISTS on OrderItem + JOIN Gym  → confirms gym actually exists in Gym table
+        # 3) INNER JOIN Client              → confirms client actually exists in Client table
+        # Without (2) and (3) the count is 34 (metadata-only); with them it matches the 4 real rows.
+        gym_meta_cond = or_(
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.audit.source")) == "dailypass_checkout_api",
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_sub",
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_free_fittbot"
+        )
+
+        # EXISTS on OrderItem — JOIN Gym confirms gym physically exists in Gym table
+        gym_exists = (
+            select(1)
+            .select_from(OrderItem)
+            .join(Gym, Gym.gym_id == cast(OrderItem.gym_id, Integer))
+            .where(
+                OrderItem.order_id == Order.id,
+                OrderItem.gym_id.isnot(None),
+                OrderItem.gym_id != "",
+                OrderItem.gym_id != "1"
+            )
+            .exists()
+        )
+
+        gym_conditions = [
+            Payment.status == "captured",
+            Order.status == "paid",
+            Order.customer_id.isnot(None),
+            gym_meta_cond,
+            gym_exists
+        ]
+        if start_date_obj:
+            gym_conditions.append(func.date(Payment.captured_at) >= start_date_obj)
+        if end_date_obj:
+            gym_conditions.append(func.date(Payment.captured_at) <= end_date_obj)
+
+        # Subquery deduplicates orders; INNER JOIN Client confirms client exists in Client table
+        gym_subq = (
+            select(
+                Order.id.label("order_id"),
+                Order.gross_amount_minor.label("gross_amount_minor")
+            )
+            .select_from(Payment)
+            .join(Order, Order.id == Payment.order_id)
+            .join(Client, Client.client_id == cast(Order.customer_id, Integer))
+            .where(*gym_conditions)
+            .distinct()
+            .subquery()
+        )
+
+        gym_stmt = (
+            select(
+                func.count(gym_subq.c.order_id).label("count"),
+                func.coalesce(func.sum(gym_subq.c.gross_amount_minor) / 100.0, 0).label("total_revenue")
+            )
+            .select_from(gym_subq)
+        )
+
+
+        gym_result = await db.execute(gym_stmt)
+        gym_row = gym_result.one()
 
         return {
             "success": True,
@@ -774,6 +838,10 @@ async def get_gmv_summary(
                 "nutrition_plan": {
                     "count": nutri_row.count,
                     "total_revenue": float(nutri_row.total_revenue)
+                },
+                "gym_membership": {
+                    "count": gym_row.count,
+                    "total_revenue": float(gym_row.total_revenue)
                 }
             }
         }
@@ -1051,8 +1119,39 @@ async def get_gym_memberships(
                 filtered_orders.append(item)
             valid_orders = filtered_orders
 
-        # Get total count for pagination
-        total = len(valid_orders)
+        # ── Validate ALL orders (client + gym must exist) to get the TRUE count ──
+        # Previously total was set before this check, causing count mismatch (e.g 34 vs 4)
+        validated_orders = []
+        for item in valid_orders:
+            order = item["order"]
+            gym_id_str = item["gym_id"]
+
+            if not order.customer_id:
+                continue
+
+            # Client must exist
+            client_stmt = select(Client).where(Client.client_id == int(order.customer_id))
+            client_result = await db.execute(client_stmt)
+            client = client_result.scalar_one_or_none()
+            if not client:
+                continue
+
+            # Gym must exist
+            if not gym_id_str or not gym_id_str.isdigit():
+                continue
+            gym_stmt = select(Gym).where(Gym.gym_id == int(gym_id_str))
+            gym_result = await db.execute(gym_stmt)
+            gym = gym_result.scalar_one_or_none()
+            if not gym:
+                continue
+
+            # Cache resolved objects to avoid re-fetching during pagination
+            item["_client"] = client
+            item["_gym"] = gym
+            validated_orders.append(item)
+
+        # TRUE count — only orders that physically have a matching client + gym
+        total = len(validated_orders)
 
         # Early return if no results
         if total == 0:
@@ -1071,46 +1170,21 @@ async def get_gym_memberships(
                 }
             }
 
-        # Sort by purchased_at descending and apply pagination
-        valid_orders.sort(key=lambda x: x["order"].created_at, reverse=True)
-
+        # Sort and paginate against the validated list
+        validated_orders.sort(key=lambda x: x["order"].created_at, reverse=True)
         start_idx = (page - 1) * limit
         end_idx = start_idx + limit
-        paginated_orders = valid_orders[start_idx:end_idx]
+        paginated_orders = validated_orders[start_idx:end_idx]
 
-        # Fetch additional details (Client, Gym, GymOwner) for paginated orders
+        # Build membership rows — client + gym already resolved above (no extra DB queries)
         memberships = []
         for item in paginated_orders:
             order = item["order"]
-            gym_id_str = item["gym_id"]
-
-            # Fetch client details (using customer_id from Payment)
-            # Skip row if client not found in clients table
-            if not order.customer_id:
-                continue
-
-            client_stmt = select(Client).where(Client.client_id == int(order.customer_id))
-            client_result = await db.execute(client_stmt)
-            client = client_result.scalar_one_or_none()
-            if not client:
-                # Skip this row if client not found in clients table
-                continue
+            client = item["_client"]
+            gym = item["_gym"]
 
             client_name = client.name or "N/A"
             client_contact = client.contact
-
-            # Fetch gym details
-            # Skip row if gym not found in gyms table
-            if not gym_id_str or not gym_id_str.isdigit():
-                continue
-
-            gym_stmt = select(Gym).where(Gym.gym_id == int(gym_id_str))
-            gym_result = await db.execute(gym_stmt)
-            gym = gym_result.scalar_one_or_none()
-            if not gym:
-                # Skip this row if gym not found in gyms table
-                continue
-
             gym_name = gym.name or "N/A"
             gym_contact = gym.contact_number
             gym_area = gym.area or "N/A"
