@@ -674,6 +674,152 @@ async def get_all_purchases(
         )
 
 
+async def compute_gmv_totals(db: AsyncSession, start_date_obj, end_date_obj):
+    """
+    Shared GMV aggregation helper.
+    Called by both /gmv-summary and /api/admin/unit-economics/data
+    so that both always return identical values.
+    """
+    EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723"]
+
+    # Daily Pass
+    dp_conditions = [DailyPass.gym_id != "1"]
+    if start_date_obj:
+        dp_conditions.append(func.date(DailyPass.created_at) >= start_date_obj)
+    if end_date_obj:
+        dp_conditions.append(func.date(DailyPass.created_at) <= end_date_obj)
+
+    dp_stmt = (
+        select(
+            func.count(DailyPass.id).label("count"),
+            func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("total_revenue")
+        )
+        .select_from(DailyPass)
+        .join(Gym, cast(DailyPass.gym_id, Integer) == Gym.gym_id)
+        .outerjoin(Payment, DailyPass.payment_id == Payment.provider_payment_id)
+        .where(*dp_conditions)
+    )
+    dp_row = (await db.execute(dp_stmt)).one()
+
+    # Fitness Class (Session)
+    sess_conditions = [SessionPurchase.status == "paid", SessionPurchase.gym_id != 1]
+    if start_date_obj:
+        sess_conditions.append(func.date(SessionPurchase.created_at) >= start_date_obj)
+    if end_date_obj:
+        sess_conditions.append(func.date(SessionPurchase.created_at) <= end_date_obj)
+
+    sess_stmt = (
+        select(
+            func.count(SessionPurchase.id).label("count"),
+            func.coalesce(func.sum(SessionPurchase.payable_rupees), 0).label("total_revenue")
+        )
+        .select_from(SessionPurchase)
+        .join(Gym, SessionPurchase.gym_id == Gym.gym_id)
+        .where(*sess_conditions)
+    )
+    sess_row = (await db.execute(sess_stmt)).one()
+
+    # Nutrition Plans
+    nutri_conditions = [
+        Payment.status == "captured",
+        func.json_extract(Payment.payment_metadata, "$.flow") == "nutrition_purchase_googleplay"
+    ]
+    if start_date_obj:
+        nutri_conditions.append(func.date(Payment.captured_at) >= start_date_obj)
+    if end_date_obj:
+        nutri_conditions.append(func.date(Payment.captured_at) <= end_date_obj)
+
+    nutri_stmt = (
+        select(
+            func.count(Payment.id).label("count"),
+            func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("total_revenue")
+        )
+        .select_from(Payment)
+        .outerjoin(Client, Payment.customer_id == Client.client_id)
+        .where(*nutri_conditions)
+        .where(~Client.contact.in_(EXCLUDED_CONTACTS))
+    )
+    nutri_row = (await db.execute(nutri_stmt)).one()
+
+    # Gym Membership
+    gym_meta_cond = or_(
+        func.json_unquote(func.json_extract(Order.order_metadata, "$.audit.source")) == "dailypass_checkout_api",
+        func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_sub",
+        func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_free_fittbot"
+    )
+    gym_exists = (
+        select(1)
+        .select_from(OrderItem)
+        .join(Gym, Gym.gym_id == cast(OrderItem.gym_id, Integer))
+        .where(
+            OrderItem.order_id == Order.id,
+            OrderItem.gym_id.isnot(None),
+            OrderItem.gym_id != "",
+            OrderItem.gym_id != "1"
+        )
+        .exists()
+    )
+    gym_conditions = [
+        Payment.status == "captured",
+        Order.status == "paid",
+        Order.customer_id.isnot(None),
+        gym_meta_cond,
+        gym_exists
+    ]
+    if start_date_obj:
+        gym_conditions.append(func.date(Payment.captured_at) >= start_date_obj)
+    if end_date_obj:
+        gym_conditions.append(func.date(Payment.captured_at) <= end_date_obj)
+
+    gym_subq = (
+        select(
+            Order.id.label("order_id"),
+            Order.gross_amount_minor.label("gross_amount_minor")
+        )
+        .select_from(Payment)
+        .join(Order, Order.id == Payment.order_id)
+        .join(Client, Client.client_id == cast(Order.customer_id, Integer))
+        .where(*gym_conditions)
+        .distinct()
+        .subquery()
+    )
+    gym_row = (await db.execute(
+        select(
+            func.count(gym_subq.c.order_id).label("count"),
+            func.coalesce(func.sum(gym_subq.c.gross_amount_minor) / 100.0, 0).label("total_revenue")
+        ).select_from(gym_subq)
+    )).one()
+
+    # AI Credits
+    ai_conditions = [
+        Payment.status == "captured",
+        func.json_extract(Payment.payment_metadata, "$.flow") == "food_scanner_credits"
+    ]
+    if start_date_obj:
+        ai_conditions.append(func.date(Payment.captured_at) >= start_date_obj)
+    if end_date_obj:
+        ai_conditions.append(func.date(Payment.captured_at) <= end_date_obj)
+
+    ai_row = (await db.execute(
+        select(
+            func.count(Payment.id).label("count"),
+            func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("total_revenue")
+        )
+        .select_from(Payment)
+        .outerjoin(Client, Payment.customer_id == Client.client_id)
+        .where(*ai_conditions)
+        .where(~Client.contact.in_(EXCLUDED_CONTACTS))
+    )).one()
+
+    return {
+        "daily_pass":     {"count": dp_row.count,    "total_revenue": float(dp_row.total_revenue)},
+        "session":        {"count": sess_row.count,  "total_revenue": float(sess_row.total_revenue)},
+        "nutrition_plan": {"count": nutri_row.count, "total_revenue": float(nutri_row.total_revenue)},
+        "gym_membership": {"count": gym_row.count,   "total_revenue": float(gym_row.total_revenue)},
+        "ai_credits":     {"count": ai_row.count,    "total_revenue": float(ai_row.total_revenue)},
+    }
+
+
 @router.get("/gmv-summary")
 async def get_gmv_summary(
     start_date: Optional[str] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
@@ -681,200 +827,15 @@ async def get_gmv_summary(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Lean GMV summary: returns purchase count and total revenue for
-    Daily Pass and Fitness Class (Session) only.
-    All aggregation is done at the DB level — no rows are loaded into Python.
+    GMV summary: delegates to compute_gmv_totals() shared helper
+    so unit-economics page returns identical values.
     """
     try:
         start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
         end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
 
-        # ── Daily Pass ─────────────────────────────────────────────────────────
-        dp_conditions = [DailyPass.gym_id != "1"]
-        if start_date_obj:
-            dp_conditions.append(func.date(DailyPass.created_at) >= start_date_obj)
-        if end_date_obj:
-            dp_conditions.append(func.date(DailyPass.created_at) <= end_date_obj)
-
-        dp_stmt = (
-            select(
-                func.count(DailyPass.id).label("count"),
-                func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("total_revenue")
-            )
-            .select_from(DailyPass)
-            .join(Gym, cast(DailyPass.gym_id, Integer) == Gym.gym_id)  # INNER JOIN — exclude orphaned records (no gym found)
-            .outerjoin(Payment, DailyPass.payment_id == Payment.provider_payment_id)
-            .where(*dp_conditions)
-        )
-        dp_result = await db.execute(dp_stmt)
-        dp_row = dp_result.one()
-
-        # ── Fitness Class (Session) ─────────────────────────────────────────────
-        sess_conditions = [
-            SessionPurchase.status == "paid",
-            SessionPurchase.gym_id != 1
-        ]
-        if start_date_obj:
-            sess_conditions.append(func.date(SessionPurchase.created_at) >= start_date_obj)
-        if end_date_obj:
-            sess_conditions.append(func.date(SessionPurchase.created_at) <= end_date_obj)
-
-        sess_stmt = (
-            select(
-                func.count(SessionPurchase.id).label("count"),
-                func.coalesce(func.sum(SessionPurchase.payable_rupees), 0).label("total_revenue")
-            )
-            .select_from(SessionPurchase)
-            .join(Gym, SessionPurchase.gym_id == Gym.gym_id)  # INNER JOIN — exclude orphaned records (no gym found)
-            .where(*sess_conditions)
-        )
-
-        sess_result = await db.execute(sess_stmt)
-        sess_row = sess_result.one()
-
-        # ── Nutrition Plans ─────────────────────────────────────────────────────
-        # Same filter as /nutritionist-plans endpoint:
-        # Payment.status = "captured" + payment_metadata.flow = "nutrition_purchase_googleplay"
-        # Excluded contacts: internal/test numbers that should not be counted
-        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723"]
-
-        nutri_conditions = [
-            Payment.status == "captured",
-            func.json_extract(Payment.payment_metadata, "$.flow") == "nutrition_purchase_googleplay"
-        ]
-        if start_date_obj:
-            nutri_conditions.append(func.date(Payment.captured_at) >= start_date_obj)
-        if end_date_obj:
-            nutri_conditions.append(func.date(Payment.captured_at) <= end_date_obj)
-
-        nutri_stmt = (
-            select(
-                func.count(Payment.id).label("count"),
-                func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("total_revenue")
-            )
-            .select_from(Payment)
-            .outerjoin(Client, Payment.customer_id == Client.client_id)
-            .where(*nutri_conditions)
-            .where(~Client.contact.in_(EXCLUDED_CONTACTS))
-        )
-        nutri_result = await db.execute(nutri_stmt)
-        nutri_row = nutri_result.one()
-
-        # ── Gym Membership ──────────────────────────────────────────────────────
-        # Mirrors the listing page validation:
-        # 1) Metadata filter (3 known flows via JSON extract)
-        # 2) EXISTS on OrderItem + JOIN Gym  → confirms gym actually exists in Gym table
-        # 3) INNER JOIN Client              → confirms client actually exists in Client table
-        # Without (2) and (3) the count is 34 (metadata-only); with them it matches the 4 real rows.
-        gym_meta_cond = or_(
-            func.json_unquote(func.json_extract(Order.order_metadata, "$.audit.source")) == "dailypass_checkout_api",
-            func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_sub",
-            func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_free_fittbot"
-        )
-
-        # EXISTS on OrderItem — JOIN Gym confirms gym physically exists in Gym table
-        gym_exists = (
-            select(1)
-            .select_from(OrderItem)
-            .join(Gym, Gym.gym_id == cast(OrderItem.gym_id, Integer))
-            .where(
-                OrderItem.order_id == Order.id,
-                OrderItem.gym_id.isnot(None),
-                OrderItem.gym_id != "",
-                OrderItem.gym_id != "1"
-            )
-            .exists()
-        )
-
-        gym_conditions = [
-            Payment.status == "captured",
-            Order.status == "paid",
-            Order.customer_id.isnot(None),
-            gym_meta_cond,
-            gym_exists
-        ]
-        if start_date_obj:
-            gym_conditions.append(func.date(Payment.captured_at) >= start_date_obj)
-        if end_date_obj:
-            gym_conditions.append(func.date(Payment.captured_at) <= end_date_obj)
-
-        # Subquery deduplicates orders; INNER JOIN Client confirms client exists in Client table
-        gym_subq = (
-            select(
-                Order.id.label("order_id"),
-                Order.gross_amount_minor.label("gross_amount_minor")
-            )
-            .select_from(Payment)
-            .join(Order, Order.id == Payment.order_id)
-            .join(Client, Client.client_id == cast(Order.customer_id, Integer))
-            .where(*gym_conditions)
-            .distinct()
-            .subquery()
-        )
-
-        gym_stmt = (
-            select(
-                func.count(gym_subq.c.order_id).label("count"),
-                func.coalesce(func.sum(gym_subq.c.gross_amount_minor) / 100.0, 0).label("total_revenue")
-            )
-            .select_from(gym_subq)
-        )
-
-
-        gym_result = await db.execute(gym_stmt)
-        gym_row = gym_result.one()
-
-        # ── AI Credits ──────────────────────────────────────────────────────────
-        # Table: payments.payments  |  Filter: $.flow == 'food_scanner_credits' (exact)
-        # Status: captured  |  Amount: amount_minor  |  Date: captured_at
-        # Excluded contacts: same internal/test numbers excluded from nutrition plans
-        ai_conditions = [
-            Payment.status == "captured",
-            func.json_extract(Payment.payment_metadata, "$.flow") == "food_scanner_credits"
-        ]
-        if start_date_obj:
-            ai_conditions.append(func.date(Payment.captured_at) >= start_date_obj)
-        if end_date_obj:
-            ai_conditions.append(func.date(Payment.captured_at) <= end_date_obj)
-
-        ai_stmt = (
-            select(
-                func.count(Payment.id).label("count"),
-                func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("total_revenue")
-            )
-            .select_from(Payment)
-            .outerjoin(Client, Payment.customer_id == Client.client_id)
-            .where(*ai_conditions)
-            .where(~Client.contact.in_(EXCLUDED_CONTACTS))
-        )
-        ai_result = await db.execute(ai_stmt)
-        ai_row = ai_result.one()
-
-        return {
-            "success": True,
-            "data": {
-                "daily_pass": {
-                    "count": dp_row.count,
-                    "total_revenue": float(dp_row.total_revenue)
-                },
-                "session": {
-                    "count": sess_row.count,
-                    "total_revenue": float(sess_row.total_revenue)
-                },
-                "nutrition_plan": {
-                    "count": nutri_row.count,
-                    "total_revenue": float(nutri_row.total_revenue)
-                },
-                "gym_membership": {
-                    "count": gym_row.count,
-                    "total_revenue": float(gym_row.total_revenue)
-                },
-                "ai_credits": {
-                    "count": ai_row.count,
-                    "total_revenue": float(ai_row.total_revenue)
-                }
-            }
-        }
+        data = await compute_gmv_totals(db, start_date_obj, end_date_obj)
+        return {"success": True, "data": data}
 
     except HTTPException:
         raise

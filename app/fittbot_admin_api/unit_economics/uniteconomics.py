@@ -2,12 +2,16 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
-from sqlalchemy import func, and_, select, distinct, case, literal_column
+from sqlalchemy import func, and_, select, distinct, case, literal_column, or_, desc
 from pydantic import BaseModel
 
 from app.models.async_database import get_async_db
 from app.models.fittbot_models import Client, ActiveUser
 from app.models.adminmodels import Expenses
+from app.fittbot_api.v1.payments.models.payments import Payment
+from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
+from app.models.dailypass_models import DailyPass, get_dailypass_session
+from app.fittbot_admin_api.purchases.purchases import compute_gmv_totals
 
 router = APIRouter(prefix="/api/admin/unit-economics", tags=["UnitEconomics"])
 
@@ -493,10 +497,27 @@ async def get_unit_economics(
         }
     }
 
+    # ========== GMV CALCULATION ==========
+    # Delegates to shared helper — guarantees identical values to /api/admin/purchases/gmv-summary
+    try:
+        gmv = await compute_gmv_totals(db, start_date_obj, end_date_obj)
+    except Exception as e:
+        logging.error(f"[UnitEconomics] GMV calculation error: {e}")
+        gmv = {
+            "daily_pass":     {"count": 0, "total_revenue": 0.0},
+            "session":        {"count": 0, "total_revenue": 0.0},
+            "nutrition_plan": {"count": 0, "total_revenue": 0.0},
+            "gym_membership": {"count": 0, "total_revenue": 0.0},
+            "ai_credits":     {"count": 0, "total_revenue": 0.0},
+        }
+
+    analytics_data["gmv"] = gmv
+
     return {
         "success": True,
         "data": analytics_data,
         "message": "Unit economics analytics fetched successfully"
     }
+
 
 
