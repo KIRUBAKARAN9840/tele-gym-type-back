@@ -2728,7 +2728,8 @@ async def get_booking_averages(
                 "daily_pass": 0,
                 "sessions": 0,
                 "gym_membership": 0,
-                "fittbot_subscription": 0
+                "fittbot_subscription": 0,
+                "ai_credits": 0
             }
 
             # 1. Daily Pass purchases
@@ -2839,20 +2840,48 @@ async def get_booking_averages(
             except Exception:
                 pass
 
+            # 5. AI Credits purchases
+            # Filter: payment_metadata['flow'] == 'food_scanner_credits' (exact match)
+            # Exclude internal/test contacts: 7373675762, 9486987082, 8667458723
+            try:
+                EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723"]
+                ai_start = datetime.combine(start_date, datetime.min.time())
+                ai_end = datetime.combine(end_date, datetime.min.time()).replace(hour=23, minute=59, second=59)
+
+                ai_stmt = (
+                    select(func.count(Payment.id))
+                    .select_from(Payment)
+                    .outerjoin(Client, Payment.customer_id == Client.client_id)
+                    .where(
+                        and_(
+                            Payment.status == "captured",
+                            func.json_extract(Payment.payment_metadata, '$.flow') == 'food_scanner_credits',
+                            Payment.captured_at >= ai_start,
+                            Payment.captured_at <= ai_end,
+                            ~Client.contact.in_(EXCLUDED_CONTACTS)
+                        )
+                    )
+                )
+                ai_result = await db.execute(ai_stmt)
+                result["ai_credits"] = ai_result.scalar() or 0
+            except Exception:
+                pass
+
             return result
 
         # Helper to calculate average from list of source-wise data
         def calculate_source_averages(data_list):
             """Calculate average for each source across data points."""
             if not data_list:
-                return {"daily_pass": 0, "sessions": 0, "gym_membership": 0, "fittbot_subscription": 0}
+                return {"daily_pass": 0, "sessions": 0, "gym_membership": 0, "fittbot_subscription": 0, "ai_credits": 0}
 
             num_points = len(data_list)
             return {
                 "daily_pass": round(sum(d["daily_pass"] for d in data_list) / num_points, 2),
                 "sessions": round(sum(d["sessions"] for d in data_list) / num_points, 2),
                 "gym_membership": round(sum(d["gym_membership"] for d in data_list) / num_points, 2),
-                "fittbot_subscription": round(sum(d["fittbot_subscription"] for d in data_list) / num_points, 2)
+                "fittbot_subscription": round(sum(d["fittbot_subscription"] for d in data_list) / num_points, 2),
+                "ai_credits": round(sum(d["ai_credits"] for d in data_list) / num_points, 2)
             }
 
         # Calculate Daily Average (last 3 days) with source breakdown
