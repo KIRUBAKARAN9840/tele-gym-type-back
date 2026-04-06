@@ -732,6 +732,34 @@ async def get_gmv_summary(
         sess_result = await db.execute(sess_stmt)
         sess_row = sess_result.one()
 
+        # ── Nutrition Plans ─────────────────────────────────────────────────────
+        # Same filter as /nutritionist-plans endpoint:
+        # Payment.status = "captured" + payment_metadata.flow = "nutrition_purchase_googleplay"
+        # Excluded contacts: internal/test numbers that should not be counted
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723"]
+
+        nutri_conditions = [
+            Payment.status == "captured",
+            func.json_extract(Payment.payment_metadata, "$.flow") == "nutrition_purchase_googleplay"
+        ]
+        if start_date_obj:
+            nutri_conditions.append(func.date(Payment.captured_at) >= start_date_obj)
+        if end_date_obj:
+            nutri_conditions.append(func.date(Payment.captured_at) <= end_date_obj)
+
+        nutri_stmt = (
+            select(
+                func.count(Payment.id).label("count"),
+                func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("total_revenue")
+            )
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(*nutri_conditions)
+            .where(~Client.contact.in_(EXCLUDED_CONTACTS))  # Exclude internal/test contacts
+        )
+        nutri_result = await db.execute(nutri_stmt)
+        nutri_row = nutri_result.one()
+
         return {
             "success": True,
             "data": {
@@ -742,6 +770,10 @@ async def get_gmv_summary(
                 "session": {
                     "count": sess_row.count,
                     "total_revenue": float(sess_row.total_revenue)
+                },
+                "nutrition_plan": {
+                    "count": nutri_row.count,
+                    "total_revenue": float(nutri_row.total_revenue)
                 }
             }
         }
@@ -2195,19 +2227,23 @@ async def get_nutritionist_plans(
     try:
         import math
 
-        # Build base query for Payment table
+        # Contacts to always exclude (internal/test accounts)
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723"]
+
+        # Build base query for Payment table — always join Client to apply exclusion
         base_payment_query = (
             select(Payment.customer_id)
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
             .where(Payment.status == "captured")
             .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
+            .where(~Client.contact.in_(EXCLUDED_CONTACTS))  # Exclude internal/test contacts
         )
 
         # Apply search filter to base query
         if search:
             search_term = f"%{search.lower()}%"
-            base_payment_query = base_payment_query.join(
-                Client, Payment.customer_id == Client.client_id
-            ).where(
+            base_payment_query = base_payment_query.where(
                 or_(
                     func.lower(Client.name).like(search_term),
                     Client.contact.like(search_term)
@@ -2237,6 +2273,7 @@ async def get_nutritionist_plans(
             .outerjoin(Client, Payment.customer_id == Client.client_id)
             .where(Payment.status == "captured")
             .where(func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay')
+            .where(~Client.contact.in_(EXCLUDED_CONTACTS))  # Exclude internal/test contacts
         )
 
         # Apply search filter
