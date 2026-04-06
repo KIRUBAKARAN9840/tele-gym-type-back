@@ -674,6 +674,86 @@ async def get_all_purchases(
         )
 
 
+@router.get("/gmv-summary")
+async def get_gmv_summary(
+    start_date: Optional[str] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Lean GMV summary: returns purchase count and total revenue for
+    Daily Pass and Fitness Class (Session) only.
+    All aggregation is done at the DB level — no rows are loaded into Python.
+    """
+    try:
+        start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+
+        # ── Daily Pass ─────────────────────────────────────────────────────────
+        dp_conditions = [DailyPass.gym_id != "1"]
+        if start_date_obj:
+            dp_conditions.append(func.date(DailyPass.created_at) >= start_date_obj)
+        if end_date_obj:
+            dp_conditions.append(func.date(DailyPass.created_at) <= end_date_obj)
+
+        dp_stmt = (
+            select(
+                func.count(DailyPass.id).label("count"),
+                func.coalesce(func.sum(Payment.amount_minor / 100.0), 0).label("total_revenue")
+            )
+            .select_from(DailyPass)
+            .join(Gym, cast(DailyPass.gym_id, Integer) == Gym.gym_id)  # INNER JOIN — exclude orphaned records (no gym found)
+            .outerjoin(Payment, DailyPass.payment_id == Payment.provider_payment_id)
+            .where(*dp_conditions)
+        )
+        dp_result = await db.execute(dp_stmt)
+        dp_row = dp_result.one()
+
+        # ── Fitness Class (Session) ─────────────────────────────────────────────
+        sess_conditions = [
+            SessionPurchase.status == "paid",
+            SessionPurchase.gym_id != 1
+        ]
+        if start_date_obj:
+            sess_conditions.append(func.date(SessionPurchase.created_at) >= start_date_obj)
+        if end_date_obj:
+            sess_conditions.append(func.date(SessionPurchase.created_at) <= end_date_obj)
+
+        sess_stmt = (
+            select(
+                func.count(SessionPurchase.id).label("count"),
+                func.coalesce(func.sum(SessionPurchase.payable_rupees), 0).label("total_revenue")
+            )
+            .select_from(SessionPurchase)
+            .join(Gym, SessionPurchase.gym_id == Gym.gym_id)  # INNER JOIN — exclude orphaned records (no gym found)
+            .where(*sess_conditions)
+        )
+
+        sess_result = await db.execute(sess_stmt)
+        sess_row = sess_result.one()
+
+        return {
+            "success": True,
+            "data": {
+                "daily_pass": {
+                    "count": dp_row.count,
+                    "total_revenue": float(dp_row.total_revenue)
+                },
+                "session": {
+                    "count": sess_row.count,
+                    "total_revenue": float(sess_row.total_revenue)
+                }
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logging.error(f"Error in get_gmv_summary: {str(e)}")
+        raise HTTPException(status_code=500, detail="An error occurred while fetching GMV summary")
+
+
 @router.get("/today-schedule")
 async def get_today_schedule(
     page: int = Query(1, ge=1, description="Page number"),
