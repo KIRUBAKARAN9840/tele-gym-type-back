@@ -214,17 +214,10 @@ async def get_sessions_revenue(
         elif exclude_gym_id_one:
             conditions.append(SessionPurchase.gym_id != 1)
 
-        # Date filtering: created OR updated within range
-        created_in_range = and_(
-            func.date(SessionPurchase.created_at) >= start_date,
-            func.date(SessionPurchase.created_at) <= end_date
-        )
-        updated_in_range = and_(
-            func.date(SessionPurchase.updated_at) >= start_date,
-            func.date(SessionPurchase.updated_at) <= end_date
-        )
-
-        conditions.append(or_(created_in_range, updated_in_range))
+        # Date filtering: only use created_at (purchase date)
+        # Revenue is attributed to when the session was purchased, not when it was last updated
+        conditions.append(func.date(SessionPurchase.created_at) >= start_date)
+        conditions.append(func.date(SessionPurchase.created_at) <= end_date)
 
         # Execute query (returns RUPEES)
         stmt = (
@@ -372,104 +365,45 @@ async def get_gym_membership_revenue(
         Revenue in PAISA
     """
     try:
-        # print(f"[REVENUE_SERVICE] Gym Membership query: {start_date} to {end_date}, exclude_gym_1={exclude_gym_id_one}")
-
-        # Fetch payments and orders
-        conditions = [
-            Payment.status == "captured",
-            Order.status == "paid",
-            func.date(Payment.captured_at) >= start_date,
-            func.date(Payment.captured_at) <= end_date
-        ]
-
-        payment_stmt = (
-            select(Payment, Order)
-            .join(Order, Order.id == Payment.order_id)
-            .where(and_(*conditions))
+        # SQL-level metadata filter using JSON functions — avoids loading all payments into Python memory
+        meta_cond = or_(
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.audit.source")) == "dailypass_checkout_api",
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_sub",
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_free_fittbot"
         )
-        payment_result = await db.execute(payment_stmt)
-        payments = payment_result.all()
 
-        # print(f"[REVENUE_SERVICE] Gym Membership - Found {len(payments)} payments")
-
-        if not payments:
-            return 0
-
-        # Collect order IDs
-        order_ids = [row.Order.id for row in payments]
-
-        # Fetch order items to get gym_ids
-        order_items_conditions = [
-            OrderItem.order_id.in_(order_ids),
-            OrderItem.gym_id.isnot(None)
+        # EXISTS subquery: ensure order has at least one valid order_item with an eligible gym_id
+        oi_conditions = [
+            OrderItem.order_id == Order.id,
+            OrderItem.gym_id.isnot(None),
+            OrderItem.gym_id != ""
         ]
-
         if specific_gym_id is not None:
-            order_items_conditions.append(OrderItem.gym_id == str(specific_gym_id))
+            oi_conditions.append(OrderItem.gym_id == str(specific_gym_id))
         elif exclude_gym_id_one:
-            order_items_conditions.append(OrderItem.gym_id != "1")
+            oi_conditions.append(OrderItem.gym_id != "1")
 
-        order_items_stmt = (
-            select(OrderItem)
-            .where(and_(*order_items_conditions))
+        gym_exists = select(1).select_from(OrderItem).where(and_(*oi_conditions)).exists()
+
+        stmt = (
+            select(func.coalesce(func.sum(Order.gross_amount_minor), 0))
+            .select_from(Payment)
+            .join(Order, Order.id == Payment.order_id)
+            .where(
+                Payment.status == "captured",
+                Order.status == "paid",
+                func.date(Payment.captured_at) >= start_date,
+                func.date(Payment.captured_at) <= end_date,
+                meta_cond,
+                gym_exists
+            )
         )
-        order_items_result = await db.execute(order_items_stmt)
-        order_items = order_items_result.scalars().all()
 
-        # print(f"[REVENUE_SERVICE] Gym Membership - Found {len(order_items)} order items after gym filter")
-
-        # Create mapping: order_id -> gym_id
-        order_gym_mapping = {}
-        for item in order_items:
-            if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
-                order_gym_mapping[item.order_id] = int(item.gym_id)
-
-        # Filter by metadata conditions and sum revenue
-        total_revenue = 0
-        matching_orders = 0
-        for row in payments:
-            order = row.Order
-
-            # Check order_metadata
-            if not order.order_metadata or not isinstance(order.order_metadata, dict):
-                continue
-
-            metadata = order.order_metadata
-
-            # Condition 1: audit.source = "dailypass_checkout_api"
-            condition1 = False
-            if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
-                if metadata["audit"].get("source") == "dailypass_checkout_api":
-                    condition1 = True
-
-            # Condition 2: order_info.flow = "unified_gym_membership_with_sub"
-            condition2 = False
-            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
-                    condition2 = True
-
-            # Condition 3: order_info.flow = "unified_gym_membership_with_free_fittbot"
-            condition3 = False
-            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
-                    condition3 = True
-
-            # Only include if any condition matches AND order has valid gym_id
-            if not (condition1 or condition2 or condition3):
-                continue
-
-            if order.id not in order_gym_mapping:
-                continue
-
-            matching_orders += 1
-            total_revenue += order.gross_amount_minor or 0
-
-        # print(f"[REVENUE_SERVICE] Gym Membership - Found {matching_orders} matching orders, total revenue: {total_revenue}")
-
-        return int(total_revenue)
+        result = await db.execute(stmt)
+        revenue = result.scalar() or 0
+        return int(revenue)
 
     except Exception as e:
-        # print(f"[REVENUE_SERVICE] Error fetching Gym Membership: {e}")
         import traceback
         traceback.print_exc()
         return 0
@@ -1107,15 +1041,9 @@ async def _get_sessions_detailed(
         elif exclude_gym_id_one:
             conditions.append(SessionPurchase.gym_id != 1)
 
-        created_in_range = and_(
-            func.date(SessionPurchase.created_at) >= start_date,
-            func.date(SessionPurchase.created_at) <= end_date
-        )
-        updated_in_range = and_(
-            func.date(SessionPurchase.updated_at) >= start_date,
-            func.date(SessionPurchase.updated_at) <= end_date
-        )
-        conditions.append(or_(created_in_range, updated_in_range))
+        # Date filtering: only use created_at (purchase date)
+        conditions.append(func.date(SessionPurchase.created_at) >= start_date)
+        conditions.append(func.date(SessionPurchase.created_at) <= end_date)
 
         stmt = (
             select(
@@ -1239,99 +1167,73 @@ async def _get_gym_membership_detailed(
 ):
     """Get Gym Membership revenue with daily and gym breakdowns."""
     try:
-        conditions = [
-            Payment.status == "captured",
-            Order.status == "paid",
-            func.date(Payment.captured_at) >= start_date,
-            func.date(Payment.captured_at) <= end_date
-        ]
-
-        payment_stmt = (
-            select(Payment, Order)
-            .join(Order, Order.id == Payment.order_id)
-            .where(and_(*conditions))
+        # SQL-level metadata filter — avoids loading all payments into Python memory
+        meta_cond = or_(
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.audit.source")) == "dailypass_checkout_api",
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_sub",
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_free_fittbot"
         )
 
-        payment_result = await db.execute(payment_stmt)
-        payments = payment_result.all()
-
-        if not payments:
-            return
-
-        # Collect order IDs
-        order_ids = [row.Order.id for row in payments]
-
-        # Fetch order items to get gym_ids
-        order_items_conditions = [
-            OrderItem.order_id.in_(order_ids),
-            OrderItem.gym_id.isnot(None)
+        # OrderItem join conditions for gym_id validation
+        oi_conditions = [
+            OrderItem.order_id == Order.id,
+            OrderItem.gym_id.isnot(None),
+            OrderItem.gym_id != ""
         ]
-
         if specific_gym_id is not None:
-            order_items_conditions.append(OrderItem.gym_id == str(specific_gym_id))
+            oi_conditions.append(OrderItem.gym_id == str(specific_gym_id))
         elif exclude_gym_id_one:
-            order_items_conditions.append(OrderItem.gym_id != "1")
+            oi_conditions.append(OrderItem.gym_id != "1")
 
-        order_items_stmt = (
-            select(OrderItem)
-            .where(and_(*order_items_conditions))
+        # Fetch only SQL-filtered rows — include order_id for deduplication, gym_id for breakdown
+        stmt = (
+            select(
+                Payment.captured_at,
+                Order.id.label("order_id"),
+                Order.gross_amount_minor,
+                OrderItem.gym_id
+            )
+            .select_from(Payment)
+            .join(Order, Order.id == Payment.order_id)
+            .join(OrderItem, and_(*oi_conditions))
+            .where(
+                Payment.status == "captured",
+                Order.status == "paid",
+                func.date(Payment.captured_at) >= start_date,
+                func.date(Payment.captured_at) <= end_date,
+                meta_cond
+            )
         )
-        order_items_result = await db.execute(order_items_stmt)
-        order_items = order_items_result.scalars().all()
 
-        # Create mapping: order_id -> gym_id
-        order_gym_mapping = {}
-        for item in order_items:
-            if item.gym_id and item.gym_id.strip() and item.gym_id.isdigit():
-                order_gym_mapping[item.order_id] = int(item.gym_id)
+        result = await db.execute(stmt)
+        rows = result.all()
 
-        # Process payments and track revenue
-        for row in payments:
-            order = row.Order
-
-            # Check metadata conditions
-            if not order.order_metadata or not isinstance(order.order_metadata, dict):
+        # Deduplicate by order_id to avoid double-counting orders with multiple order_items
+        seen_order_ids = set()
+        for row in rows:
+            if row.order_id in seen_order_ids:
                 continue
+            seen_order_ids.add(row.order_id)
 
-            metadata = order.order_metadata
-
-            condition1 = False
-            if metadata.get("audit") and isinstance(metadata.get("audit"), dict):
-                if metadata["audit"].get("source") == "dailypass_checkout_api":
-                    condition1 = True
-
-            condition2 = False
-            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                if metadata["order_info"].get("flow") == "unified_gym_membership_with_sub":
-                    condition2 = True
-
-            condition3 = False
-            if metadata.get("order_info") and isinstance(metadata.get("order_info"), dict):
-                if metadata["order_info"].get("flow") == "unified_gym_membership_with_free_fittbot":
-                    condition3 = True
-
-            if not (condition1 or condition2 or condition3):
-                continue
-
-            if order.id not in order_gym_mapping:
-                continue
-
-            amount = order.gross_amount_minor or 0
+            amount = row.gross_amount_minor or 0
             source_revenue["gym_membership"] += amount
 
             # Track daily revenue
-            date_key = row.Payment.captured_at.date().isoformat() if row.Payment.captured_at else None
+            date_key = row.captured_at.date().isoformat() if row.captured_at else None
             if date_key:
                 if date_key not in daily_revenue:
                     daily_revenue[date_key] = 0
                 daily_revenue[date_key] += amount
 
             # Track gym-wise revenue
-            gym_key = order_gym_mapping.get(order.id)
-            if gym_key:
-                if gym_key not in gym_revenue:
-                    gym_revenue[gym_key] = 0
-                gym_revenue[gym_key] += amount
+            if row.gym_id:
+                try:
+                    gym_key = int(row.gym_id)
+                    if gym_key not in gym_revenue:
+                        gym_revenue[gym_key] = 0
+                    gym_revenue[gym_key] += amount
+                except (ValueError, TypeError):
+                    pass
 
     except Exception as e:
         import traceback
@@ -1507,3 +1409,4 @@ def calculate_ai_credits_net_revenue(revenue_in_paise: int) -> dict:
         "google_commission": int(google_commission),
         "net_revenue": int(max(0, net_revenue))
     }
+
