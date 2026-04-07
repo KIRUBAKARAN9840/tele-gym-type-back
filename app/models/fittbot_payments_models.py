@@ -442,3 +442,15 @@ class CommissionConfig(Base):
 
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CREDIT BALANCE
+# ═══════════════════════════════════════════════════════════════════════════════
+class CreditBalance(Base):
+    __tablename__ = "credit_balances"
+    __table_args__ = {"schema": "payments"}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, nullable=False, index=True)
+    balance = Column(Numeric(14, 2), nullable=False, default=0)
+

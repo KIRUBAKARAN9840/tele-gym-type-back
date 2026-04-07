@@ -17,6 +17,7 @@ from app.models.fittbot_models import (
     FittbotGymMembership,
     ActiveUser,
 )
+from app.models.fittbot_payments_models import CreditBalance
 from app.models.dailypass_models import DailyPass, get_dailypass_session
 from app.models.async_database import get_async_db
 from app.fittbot_api.v1.payments.models.subscriptions import Subscription
@@ -1383,7 +1384,6 @@ async def get_users_overview(
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
     search: Optional[str] = Query(None, description="Search by name, mobile, or gym"),
     status: Optional[str] = Query(None, description="Filter by access status (active/inactive)"),
-    plan: Optional[str] = Query(None, description="Filter by plan name (Gold/Platinum/Diamond)"),
     gym: Optional[str] = Query(None, description="Filter by gym name"),
     sort_order: str = Query("desc", description="Sort order for created_at"),
     date_filter: Optional[str] = Query(None, description="Date filter: all, today, yesterday, week, month, custom"),
@@ -1396,12 +1396,6 @@ async def get_users_overview(
     try:
         now = datetime.now(IST)
 
-        # 1. Get available plans
-        plans_data = [
-            {"id": 1, "plan_name": "Gold"},
-            {"id": 2, "plan_name": "Platinum"},
-            {"id": 3, "plan_name": "Diamond"}
-        ]
 
         # Create latest membership subquery (same as individual pages)
         latest_membership_subquery = select(
@@ -1676,12 +1670,15 @@ async def get_users_overview(
             Client.created_at,
             Client.platform,
             Gym.name.label('gym_name'),
+            CreditBalance.balance.label('ai_credits'),
             latest_sub.c.product_id.label('subscription_product_id'),
             latest_sub.c.active_until.label('subscription_active_until')
         ).outerjoin(
             Gym, Client.gym_id == Gym.gym_id
         ).outerjoin(
             latest_sub, func.cast(Client.client_id, String) == latest_sub.c.customer_id
+        ).outerjoin(
+            CreditBalance, Client.client_id == CreditBalance.client_id
         )
 
         # Apply filters
@@ -1705,14 +1702,6 @@ async def get_users_overview(
                     active_until_cast < now
                 ))
 
-        if plan and plan != "all":
-            plan_lower = plan.lower()
-            if plan_lower == "gold":
-                stmt = stmt.where(func.lower(latest_sub.c.product_id).like("one_month_plan%"))
-            elif plan_lower == "platinum":
-                stmt = stmt.where(func.lower(latest_sub.c.product_id).like("six_month_plan%"))
-            elif plan_lower == "diamond":
-                stmt = stmt.where(func.lower(latest_sub.c.product_id).like("twelve_month_plan%"))
 
         if gym:
             stmt = stmt.where(func.lower(Gym.name).like(f"%{gym.lower()}%"))
@@ -1775,7 +1764,6 @@ async def get_users_overview(
         for result in results:
             has_active_subscription = is_subscription_active(result.subscription_active_until, now)
             access_status = "active" if has_active_subscription else "inactive"
-            plan_name = get_plan_name_from_product_id(result.subscription_product_id)
 
             user_data = {
                 "client_id": result.client_id,
@@ -1784,8 +1772,8 @@ async def get_users_overview(
                 "email": result.email,
                 "gym_name": result.gym_name,
                 "platform":result.platform,
+                "ai_credits": float(result.ai_credits) if result.ai_credits is not None else 0,
                 "access_status": access_status,
-                "plan_name": plan_name,
                 "created_at": result.created_at
             }
             users.append(user_data)
@@ -1804,7 +1792,6 @@ async def get_users_overview(
                 "totalPages": total_pages,
                 "hasNext": has_next,
                 "hasPrev": has_prev,
-                "plans": plans_data,
                 "clientCounts": client_counts_data,
                 "onlineOfflineCounts": online_offline_counts_data,
                 "platformCounts": platform_counts_data,
@@ -2576,18 +2563,86 @@ async def get_user_gym_membership(
         }
 
 
+@router.get("/{user_id}/ai-credits-purchases")
+async def get_user_ai_credits_purchases(
+    user_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Get AI Credit purchases for a specific user from payments table where flow is food_scanner_credits"""
+    try:
+        # Querying payments table for customer_id and status='captured'
+        # We will filter flow in python if needed, or use a more robust SQL query
+        user_id_str = str(user_id)
+        
+        stmt = (
+            select(Payment)
+            .where(
+                and_(
+                    Payment.customer_id == user_id_str,
+                    Payment.status == "captured"
+                )
+            )
+            .order_by(Payment.captured_at.desc())
+        )
+
+        result = await db.execute(stmt)
+        payments = result.scalars().all()
+
+        import json
+
+        ai_credits_list = []
+        for payment in payments:
+            metadata = payment.payment_metadata
+            
+            if isinstance(metadata, str):
+                try:
+                    metadata = json.loads(metadata)
+                except json.JSONDecodeError:
+                    metadata = {}
+            elif not isinstance(metadata, dict):
+                metadata = {}
+            
+            flow = metadata.get("flow", "")
+            if flow == "food_scanner_credits":
+                ai_credits_list.append({
+                    "id": payment.id,
+                    "amount": float(payment.amount_minor),
+                    "status": payment.status,
+                    "captured_at": payment.captured_at.isoformat() if payment.captured_at else (payment.created_at.isoformat() if payment.created_at else None),
+                    "created_at": payment.created_at.isoformat() if payment.created_at else None,
+                })
+
+        return {
+            "success": True,
+            "data": ai_credits_list,
+            "total": len(ai_credits_list),
+            "message": f"AI Credit purchases fetched successfully for customer_id {user_id_str}"
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "data": [],
+            "message": f"Error fetching AI Credits: {str(e)}",
+            "total": 0
+        }
+
+
 @router.get("/{user_id}/last-purchases")
 async def get_user_last_purchases(
     user_id: int,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Get all four types of purchases for a specific user.
-    Returns the most recent purchase for each of the four types:
+    Get all five types of purchases for a specific user.
+    Returns the most recent purchase for each of the five types:
     1. Daily Pass (latest)
     2. Session (latest)
     3. Gym Membership (latest, excluding 'normal' and 'admission_fees')
     4. Subscription (latest, excluding 'free_trial' and 'internal_manual' providers)
+    5. AI Credits (latest)
     """
     try:
         now = datetime.now(IST)
@@ -2597,7 +2652,8 @@ async def get_user_last_purchases(
             "daily_pass": None,
             "session": None,
             "membership": None,
-            "subscription": None
+            "subscription": None,
+            "ai_credits": None
         }
 
         # 1. Get latest Daily Pass
@@ -2718,6 +2774,45 @@ async def get_user_last_purchases(
                     "active_until": sub.active_until.isoformat() if sub.active_until else None,
                     "is_active": is_subscription_active(sub.active_until, now)
                 }
+        except Exception as e:
+            pass
+
+        # 5. Get latest AI Credit purchase
+        try:
+            import json
+            
+            ai_stmt = (
+                select(Payment)
+                .where(
+                    and_(
+                        Payment.customer_id == user_id_str,
+                        Payment.status == "captured"
+                    )
+                )
+                .order_by(Payment.captured_at.desc())
+            )
+            
+            ai_result = await db.execute(ai_stmt)
+            # Find the FIRST one that matches food_scanner_credits
+            for payment in ai_result.scalars():
+                metadata = payment.payment_metadata
+                if isinstance(metadata, str):
+                    try:
+                        metadata = json.loads(metadata)
+                    except json.JSONDecodeError:
+                        metadata = {}
+                elif not isinstance(metadata, dict):
+                    metadata = {}
+                
+                if metadata.get("flow") == "food_scanner_credits":
+                    purchases["ai_credits"] = {
+                        "type": "AI Credits",
+                        "purchase_date": payment.captured_at.isoformat() if payment.captured_at else (payment.created_at.isoformat() if payment.created_at else None),
+                        "gym_name": None,
+                        "amount": float(payment.amount_minor),
+                        "status": payment.status
+                    }
+                    break  # Got the latest one, so stop looking
         except Exception as e:
             pass
 
