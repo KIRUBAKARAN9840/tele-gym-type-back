@@ -25,7 +25,7 @@ FUTURE CHANGES:
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date, datetime, timedelta
-from sqlalchemy import func, and_, select, or_, distinct
+from sqlalchemy import func, and_, select, or_, distinct, cast, Integer
 from typing import Dict, Any, List, Optional, Tuple
 from decimal import Decimal
 from pydantic import BaseModel
@@ -35,7 +35,7 @@ from app.models.async_database import get_async_db
 from app.models.dailypass_models import get_dailypass_session, DailyPass
 from app.models.fittbot_models import (
     SessionBookingDay, SessionBooking, SessionPurchase,
-    GymPlans, FittbotGymMembership
+    GymPlans, FittbotGymMembership, Gym, Client
 )
 from app.fittbot_api.v1.payments.models.payments import Payment
 from app.fittbot_api.v1.payments.models.orders import Order, OrderItem
@@ -150,29 +150,25 @@ async def get_daily_pass_revenue(
         Revenue in PAISA
     """
     try:
-        dailypass_session = get_dailypass_session()
-
-        # Build conditions (for sync session)
         conditions = [
             func.date(DailyPass.created_at) >= start_date,
             func.date(DailyPass.created_at) <= end_date
         ]
 
-        # Gym filtering
         if specific_gym_id is not None:
             conditions.append(DailyPass.gym_id == str(specific_gym_id))
         elif exclude_gym_id_one:
             conditions.append(DailyPass.gym_id != "1")
 
-        # Execute query using sync session
         stmt = (
-            select(func.coalesce(func.sum(DailyPass.amount_paid), 0))
+            select(func.coalesce(func.sum(Payment.amount_minor), 0))
+            .select_from(DailyPass)
+            .join(Gym, cast(DailyPass.gym_id, Integer) == Gym.gym_id)
+            .outerjoin(Payment, DailyPass.payment_id == Payment.provider_payment_id)
             .where(and_(*conditions))
         )
-        result = dailypass_session.execute(stmt)
+        result = await db.execute(stmt)
         revenue = result.scalar() or 0
-
-        dailypass_session.close()
         return int(revenue)
 
     except Exception as e:
@@ -203,32 +199,25 @@ async def get_sessions_revenue(
         Revenue in PAISA
     """
     try:
-        # Build conditions
-        conditions = [
-            SessionPurchase.status == "paid"
-        ]
+        conditions = [SessionPurchase.status == "paid"]
 
-        # Gym filtering - SessionPurchase.gym_id is INTEGER
         if specific_gym_id is not None:
             conditions.append(SessionPurchase.gym_id == specific_gym_id)
         elif exclude_gym_id_one:
             conditions.append(SessionPurchase.gym_id != 1)
 
-        # Date filtering: only use created_at (purchase date)
-        # Revenue is attributed to when the session was purchased, not when it was last updated
         conditions.append(func.date(SessionPurchase.created_at) >= start_date)
         conditions.append(func.date(SessionPurchase.created_at) <= end_date)
 
-        # Execute query (returns RUPEES)
         stmt = (
             select(func.coalesce(func.sum(SessionPurchase.payable_rupees), 0))
+            .select_from(SessionPurchase)
+            .join(Gym, SessionPurchase.gym_id == Gym.gym_id)
             .where(and_(*conditions))
         )
 
         result = await db.execute(stmt)
         revenue_rupees = result.scalar() or 0
-
-        # Convert RUPEES to PAISA for consistency
         return int(revenue_rupees * 100) if revenue_rupees else 0
 
     except Exception as e:
@@ -264,75 +253,21 @@ async def get_fittbot_subscription_revenue(
         Revenue in PAISA (amount_minor is already in minor units)
     """
     try:
-        import logging
-        logger = logging.getLogger("revenue_service")
-
-        # For JSON querying in SQLAlchemy with PostgreSQL
-        from sqlalchemy import cast, String
-        import json
-
-        # Build conditions
-        conditions = [
-            Payment.status == "captured",
-        ]
-
-        # Date filter on captured_at
-        conditions.append(func.date(Payment.captured_at) >= start_date)
-        conditions.append(func.date(Payment.captured_at) <= end_date)
-
-        # Fetch all captured payments in date range
-        fetch_stmt = (
-            select(Payment)
-            .where(Payment.status == "captured")
-            .where(func.date(Payment.captured_at) >= start_date)
-            .where(func.date(Payment.captured_at) <= end_date)
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
+        stmt = (
+            select(func.coalesce(func.sum(Payment.amount_minor), 0))
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(
+                Payment.status == "captured",
+                func.json_extract(Payment.payment_metadata, "$.flow") == "nutrition_purchase_googleplay",
+                func.date(Payment.captured_at) >= start_date,
+                func.date(Payment.captured_at) <= end_date,
+                ~Client.contact.in_(EXCLUDED_CONTACTS)
+            )
         )
-
-        fetch_result = await db.execute(fetch_stmt)
-        payments = fetch_result.scalars().all()
-
-        logger.info(f"[NUTRITIONIST_PLAN] Total captured payments in range: {len(payments)}")
-
-        # Filter by payment_metadata['flow'] containing 'nutrition_purchase_googleplay'
-        nutritionist_revenue = 0
-        matched_count = 0
-        sample_metadata = None
-
-        for payment in payments:
-            if payment.payment_metadata and isinstance(payment.payment_metadata, dict):
-                # Check flow at different nesting levels
-                flow = None
-
-                # Level 1: Direct flow key
-                if "flow" in payment.payment_metadata:
-                    flow = payment.payment_metadata.get("flow")
-
-                # Level 2: flow inside order_info
-                elif "order_info" in payment.payment_metadata:
-                    order_info = payment.payment_metadata.get("order_info")
-                    if isinstance(order_info, dict) and "flow" in order_info:
-                        flow = order_info.get("flow")
-
-                # Check if flow contains nutrition_purchase_googleplay
-                if flow and "nutrition_purchase_googleplay" in str(flow):
-                    nutritionist_revenue += payment.amount_minor or 0
-                    matched_count += 1
-                    if matched_count <= 3:  # Store first 3 samples
-                        if sample_metadata is None:
-                            sample_metadata = []
-                        sample_metadata.append({
-                            "payment_id": payment.id,
-                            "amount_minor": payment.amount_minor,
-                            "flow": flow,
-                            "metadata": payment.payment_metadata
-                        })
-
-        logger.info(f"[NUTRITIONIST_PLAN] Matched payments: {matched_count}, Revenue: {nutritionist_revenue}")
-        if sample_metadata:
-            logger.info(f"[NUTRITIONIST_PLAN] Sample metadata: {sample_metadata}")
-
-        return int(nutritionist_revenue)
-
+        result = await db.execute(stmt)
+        return int(result.scalar() or 0)
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -365,14 +300,12 @@ async def get_gym_membership_revenue(
         Revenue in PAISA
     """
     try:
-        # SQL-level metadata filter using JSON functions — avoids loading all payments into Python memory
-        meta_cond = or_(
+        gym_meta_cond = or_(
             func.json_unquote(func.json_extract(Order.order_metadata, "$.audit.source")) == "dailypass_checkout_api",
             func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_sub",
             func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_free_fittbot"
         )
 
-        # EXISTS subquery: ensure order has at least one valid order_item with an eligible gym_id
         oi_conditions = [
             OrderItem.order_id == Order.id,
             OrderItem.gym_id.isnot(None),
@@ -383,21 +316,38 @@ async def get_gym_membership_revenue(
         elif exclude_gym_id_one:
             oi_conditions.append(OrderItem.gym_id != "1")
 
-        gym_exists = select(1).select_from(OrderItem).where(and_(*oi_conditions)).exists()
+        gym_exists = (
+            select(1)
+            .select_from(OrderItem)
+            .join(Gym, Gym.gym_id == cast(OrderItem.gym_id, Integer))
+            .where(and_(*oi_conditions))
+            .exists()
+        )
 
-        stmt = (
-            select(func.coalesce(func.sum(Order.gross_amount_minor), 0))
+        gym_conditions = [
+            Payment.status == "captured",
+            Order.status == "paid",
+            Order.customer_id.isnot(None),
+            func.date(Payment.captured_at) >= start_date,
+            func.date(Payment.captured_at) <= end_date,
+            gym_meta_cond,
+            gym_exists
+        ]
+
+        subq = (
+            select(
+                Order.id.label("order_id"),
+                Order.gross_amount_minor.label("gross_amount_minor")
+            )
             .select_from(Payment)
             .join(Order, Order.id == Payment.order_id)
-            .where(
-                Payment.status == "captured",
-                Order.status == "paid",
-                func.date(Payment.captured_at) >= start_date,
-                func.date(Payment.captured_at) <= end_date,
-                meta_cond,
-                gym_exists
-            )
+            .join(Client, Client.client_id == cast(Order.customer_id, Integer))
+            .where(*gym_conditions)
+            .distinct()
+            .subquery()
         )
+
+        stmt = select(func.coalesce(func.sum(subq.c.gross_amount_minor), 0)).select_from(subq)
 
         result = await db.execute(stmt)
         revenue = result.scalar() or 0
@@ -487,50 +437,25 @@ async def get_ai_credits_revenue(
     total_revenue = 0
 
     try:
-        import logging
-        logger = logging.getLogger("revenue_service")
-
-        # Fetch all captured payments in the date range
-        fetch_stmt = (
-            select(Payment)
-            .where(Payment.status == "captured")
-            .where(func.date(Payment.captured_at) >= start_date)
-            .where(func.date(Payment.captured_at) <= end_date)
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
+        stmt = (
+            select(func.coalesce(func.sum(Payment.amount_minor), 0))
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(
+                Payment.status == "captured",
+                func.json_extract(Payment.payment_metadata, "$.flow") == "food_scanner_credits",
+                func.date(Payment.captured_at) >= start_date,
+                func.date(Payment.captured_at) <= end_date,
+                ~Client.contact.in_(EXCLUDED_CONTACTS)
+            )
         )
-
-        fetch_result = await db.execute(fetch_stmt)
-        payments = fetch_result.scalars().all()
-
-        logger.info(f"[AI_CREDITS] Total captured payments: {len(payments)}")
-
-        matched_count = 0
-        for payment in payments:
-            if payment.payment_metadata and isinstance(payment.payment_metadata, dict):
-                # Check flow at different nesting levels
-                flow = None
-
-                # Level 1: Direct flow key
-                if "flow" in payment.payment_metadata:
-                    flow = payment.payment_metadata.get("flow")
-
-                # Level 2: flow inside order_info
-                elif "order_info" in payment.payment_metadata:
-                    order_info = payment.payment_metadata.get("order_info")
-                    if isinstance(order_info, dict) and "flow" in order_info:
-                        flow = order_info.get("flow")
-
-                # Check if flow contains food_scanner_credits
-                if flow and "food_scanner_credits" in str(flow):
-                    total_revenue += payment.amount_minor or 0
-                    matched_count += 1
-
-        logger.info(f"[AI_CREDITS] Matched: {matched_count}, Revenue: {total_revenue}")
-
+        result = await db.execute(stmt)
+        return int(result.scalar() or 0)
     except Exception as e:
         import traceback
         traceback.print_exc()
-
-    return total_revenue
+        return 0
 
 
 # ============================================================================
@@ -568,50 +493,25 @@ async def get_amortized_fittbot_subscription_revenue(
     total_revenue = 0.0
 
     try:
-        import logging
-        logger = logging.getLogger("revenue_service")
-
-        # Fetch all captured payments in the target month
-        fetch_stmt = (
-            select(Payment)
-            .where(Payment.status == "captured")
-            .where(func.date(Payment.captured_at) >= target_month_start)
-            .where(func.date(Payment.captured_at) <= target_month_end)
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
+        stmt = (
+            select(func.coalesce(func.sum(Payment.amount_minor), 0))
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(
+                Payment.status == "captured",
+                func.json_extract(Payment.payment_metadata, "$.flow") == "nutrition_purchase_googleplay",
+                func.date(Payment.captured_at) >= target_month_start,
+                func.date(Payment.captured_at) <= target_month_end,
+                ~Client.contact.in_(EXCLUDED_CONTACTS)
+            )
         )
-
-        fetch_result = await db.execute(fetch_stmt)
-        payments = fetch_result.scalars().all()
-
-        logger.info(f"[NUTRITIONIST_PLAN_MRR] Total payments: {len(payments)}")
-
-        matched_count = 0
-        for payment in payments:
-            if payment.payment_metadata and isinstance(payment.payment_metadata, dict):
-                # Check flow at different nesting levels
-                flow = None
-
-                # Level 1: Direct flow key
-                if "flow" in payment.payment_metadata:
-                    flow = payment.payment_metadata.get("flow")
-
-                # Level 2: flow inside order_info
-                elif "order_info" in payment.payment_metadata:
-                    order_info = payment.payment_metadata.get("order_info")
-                    if isinstance(order_info, dict) and "flow" in order_info:
-                        flow = order_info.get("flow")
-
-                # Check if flow contains nutrition_purchase_googleplay
-                if flow and "nutrition_purchase_googleplay" in str(flow):
-                    total_revenue += payment.amount_minor or 0
-                    matched_count += 1
-
-        logger.info(f"[NUTRITIONIST_PLAN_MRR] Matched: {matched_count}, Revenue: {total_revenue}")
-
+        result = await db.execute(stmt)
+        return float(result.scalar() or 0)
     except Exception as e:
         import traceback
         traceback.print_exc()
-
-    return total_revenue
+        return 0.0
 
 
 async def get_amortized_gym_membership_revenue(
@@ -666,6 +566,7 @@ async def get_amortized_gym_membership_revenue(
 
         order_items_stmt = (
             select(OrderItem)
+            .join(Gym, Gym.gym_id == cast(OrderItem.gym_id, Integer))
             .where(and_(*order_items_conditions))
         )
         order_items_result = await db.execute(order_items_stmt)
@@ -971,8 +872,6 @@ async def _get_daily_pass_detailed(
 ):
     """Get Daily Pass revenue with daily and gym breakdowns."""
     try:
-        dailypass_session = get_dailypass_session()
-
         conditions = [
             func.date(DailyPass.created_at) >= start_date,
             func.date(DailyPass.created_at) <= end_date
@@ -985,18 +884,21 @@ async def _get_daily_pass_detailed(
 
         stmt = (
             select(
-                DailyPass.amount_paid,
+                Payment.amount_minor,
                 DailyPass.created_at,
                 DailyPass.gym_id
             )
+            .select_from(DailyPass)
+            .join(Gym, cast(DailyPass.gym_id, Integer) == Gym.gym_id)
+            .outerjoin(Payment, DailyPass.payment_id == Payment.provider_payment_id)
             .where(and_(*conditions))
         )
 
-        result = dailypass_session.execute(stmt)
+        result = await db.execute(stmt)
         daily_passes = result.all()
 
         for dp in daily_passes:
-            amount = dp.amount_paid or 0
+            amount = dp.amount_minor or 0
             source_revenue["daily_pass"] += amount
 
             # Track daily revenue
@@ -1016,10 +918,9 @@ async def _get_daily_pass_detailed(
                 except (ValueError, TypeError):
                     pass
 
-        dailypass_session.close()
-
     except Exception as e:
-        pass
+        import traceback
+        traceback.print_exc()
 
 
 async def _get_sessions_detailed(
@@ -1051,6 +952,8 @@ async def _get_sessions_detailed(
                 SessionPurchase.created_at,
                 SessionPurchase.gym_id
             )
+            .select_from(SessionPurchase)
+            .join(Gym, SessionPurchase.gym_id == Gym.gym_id)
             .where(and_(*conditions))
         )
 
@@ -1097,58 +1000,35 @@ async def _get_fittbot_subscription_detailed(
     - Sum amount_minor values
     """
     try:
-        import logging
-        logger = logging.getLogger("revenue_service")
-
-        # Fetch all captured payments in date range
-        fetch_stmt = (
-            select(Payment)
-            .where(Payment.status == "captured")
-            .where(func.date(Payment.captured_at) >= start_date)
-            .where(func.date(Payment.captured_at) <= end_date)
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
+        stmt = (
+            select(
+                Payment.amount_minor,
+                Payment.captured_at
+            )
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(
+                Payment.status == "captured",
+                func.json_extract(Payment.payment_metadata, "$.flow") == "nutrition_purchase_googleplay",
+                func.date(Payment.captured_at) >= start_date,
+                func.date(Payment.captured_at) <= end_date,
+                ~Client.contact.in_(EXCLUDED_CONTACTS)
+            )
         )
+        result = await db.execute(stmt)
+        payments = result.all()
 
-        fetch_result = await db.execute(fetch_stmt)
-        payments = fetch_result.scalars().all()
-
-        logger.info(f"[NUTRITIONIST_PLAN_DETAILED] Total payments: {len(payments)}")
-
-        matched_count = 0
-        sample_count = 0
         for payment in payments:
-            if payment.payment_metadata and isinstance(payment.payment_metadata, dict):
-                # Log first 5 payment metadata samples to debug
-                if sample_count < 5:
-                    logger.info(f"[NUTRITIONIST_PLAN_DETAILED] Sample {sample_count + 1} metadata: {payment.payment_metadata}")
-                    sample_count += 1
+            amount = payment.amount_minor or 0
+            source_revenue["fittbot_subscription"] += amount
 
-                # Check flow at different nesting levels
-                flow = None
-
-                # Level 1: Direct flow key
-                if "flow" in payment.payment_metadata:
-                    flow = payment.payment_metadata.get("flow")
-
-                # Level 2: flow inside order_info
-                elif "order_info" in payment.payment_metadata:
-                    order_info = payment.payment_metadata.get("order_info")
-                    if isinstance(order_info, dict) and "flow" in order_info:
-                        flow = order_info.get("flow")
-
-                # Check if flow contains nutrition_purchase_googleplay
-                if flow and "nutrition_purchase_googleplay" in str(flow):
-                    amount = payment.amount_minor or 0
-                    source_revenue["fittbot_subscription"] += amount
-                    matched_count += 1
-
-                    # Track daily revenue
-                    date_key = payment.captured_at.date().isoformat() if payment.captured_at else None
-                    if date_key:
-                        if date_key not in daily_revenue:
-                            daily_revenue[date_key] = 0
-                        daily_revenue[date_key] += amount
-
-        logger.info(f"[NUTRITIONIST_PLAN_DETAILED] Matched: {matched_count}, Revenue: {source_revenue['fittbot_subscription']}")
+            # Track daily revenue
+            date_key = payment.captured_at.date().isoformat() if payment.captured_at else None
+            if date_key:
+                if date_key not in daily_revenue:
+                    daily_revenue[date_key] = 0
+                daily_revenue[date_key] += amount
 
     except Exception as e:
         import traceback
@@ -1195,10 +1075,13 @@ async def _get_gym_membership_detailed(
             )
             .select_from(Payment)
             .join(Order, Order.id == Payment.order_id)
+            .join(Client, Client.client_id == cast(Order.customer_id, Integer))
             .join(OrderItem, and_(*oi_conditions))
+            .join(Gym, Gym.gym_id == cast(OrderItem.gym_id, Integer))
             .where(
                 Payment.status == "captured",
                 Order.status == "paid",
+                Order.customer_id.isnot(None),
                 func.date(Payment.captured_at) >= start_date,
                 func.date(Payment.captured_at) <= end_date,
                 meta_cond
@@ -1257,50 +1140,35 @@ async def _get_ai_credits_detailed(
     - Sum amount_minor values
     """
     try:
-        import logging
-        logger = logging.getLogger("revenue_service")
-
-        # Fetch all captured payments in date range
-        fetch_stmt = (
-            select(Payment)
-            .where(Payment.status == "captured")
-            .where(func.date(Payment.captured_at) >= start_date)
-            .where(func.date(Payment.captured_at) <= end_date)
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
+        stmt = (
+            select(
+                Payment.amount_minor,
+                Payment.captured_at
+            )
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(
+                Payment.status == "captured",
+                func.json_extract(Payment.payment_metadata, "$.flow") == "food_scanner_credits",
+                func.date(Payment.captured_at) >= start_date,
+                func.date(Payment.captured_at) <= end_date,
+                ~Client.contact.in_(EXCLUDED_CONTACTS)
+            )
         )
+        result = await db.execute(stmt)
+        payments = result.all()
 
-        fetch_result = await db.execute(fetch_stmt)
-        payments = fetch_result.scalars().all()
-
-        matched_count = 0
         for payment in payments:
-            if payment.payment_metadata and isinstance(payment.payment_metadata, dict):
-                # Check flow at different nesting levels
-                flow = None
+            amount = payment.amount_minor or 0
+            source_revenue["ai_credits"] += amount
 
-                # Level 1: Direct flow key
-                if "flow" in payment.payment_metadata:
-                    flow = payment.payment_metadata.get("flow")
-
-                # Level 2: flow inside order_info
-                elif "order_info" in payment.payment_metadata:
-                    order_info = payment.payment_metadata.get("order_info")
-                    if isinstance(order_info, dict) and "flow" in order_info:
-                        flow = order_info.get("flow")
-
-                # Check if flow contains food_scanner_credits
-                if flow and "food_scanner_credits" in str(flow):
-                    amount = payment.amount_minor or 0
-                    source_revenue["ai_credits"] += amount
-                    matched_count += 1
-
-                    # Track daily revenue
-                    date_key = payment.captured_at.date().isoformat() if payment.captured_at else None
-                    if date_key:
-                        if date_key not in daily_revenue:
-                            daily_revenue[date_key] = 0
-                        daily_revenue[date_key] += amount
-
-        logger.info(f"[AI_CREDITS_DETAILED] Matched: {matched_count}, Revenue: {source_revenue['ai_credits']}")
+            # Track daily revenue
+            date_key = payment.captured_at.date().isoformat() if payment.captured_at else None
+            if date_key:
+                if date_key not in daily_revenue:
+                    daily_revenue[date_key] = 0
+                daily_revenue[date_key] += amount
 
     except Exception as e:
         import traceback
