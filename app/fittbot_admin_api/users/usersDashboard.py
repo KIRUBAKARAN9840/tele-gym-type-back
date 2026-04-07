@@ -1,5 +1,8 @@
 # Backend Implementation for Users API
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+import pandas as pd
+import io
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, or_, and_, desc, asc, case, literal_column, String, select, over, union_all, cast, DateTime as SQLDateTime, distinct
@@ -2561,6 +2564,86 @@ async def get_user_gym_membership(
             "message": f"Error fetching Gym Membership: {str(e)}",
             "total": 0
         }
+
+
+@router.get("/{user_id}/export-purchases")
+async def export_user_purchases(
+    user_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Export all five types of purchases for a specific user to a single Excel file with multiple sheets.
+    """
+    try:
+        # Fetch all purchase types using your existing endpoint logic
+        daily_pass_resp = await get_user_daily_pass_purchases(user_id, db)
+        sessions_resp = await get_user_session_bookings(user_id, db)
+        subscription_resp = await get_user_fittbot_subscription(user_id, db)
+        membership_resp = await get_user_gym_membership(user_id, db)
+        ai_credits_resp = await get_user_ai_credits_purchases(user_id, db)
+
+        # Create Excel in memory
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            
+            # 1. Daily Pass Sheet
+            dp_data = daily_pass_resp.get("data", [])
+            if dp_data:
+                df_dp = pd.DataFrame(dp_data)
+                # Keep relevant columns and rename
+                cols = ["created_at", "gym_name", "valid_from", "valid_until", "days_total", "days_used", "days_remaining", "amount_paid"]
+                df_dp = df_dp[[c for c in cols if c in df_dp.columns]]
+                df_dp["amount_paid"] = df_dp["amount_paid"] / 100.0 if "amount_paid" in df_dp.columns else 0
+                df_dp.to_excel(writer, sheet_name='Daily Pass', index=False)
+            
+            # 2. Fitness Classes Sheet
+            sess_data = sessions_resp.get("data", [])
+            if sess_data:
+                df_sess = pd.DataFrame(sess_data)
+                cols = ["created_at", "booking_date", "session_name", "gym_name", "start_time", "end_time", "price_paid", "status"]
+                df_sess = df_sess[[c for c in cols if c in df_sess.columns]]
+                df_sess.to_excel(writer, sheet_name='Fitness Classes', index=False)
+
+            # 3. Nutrition Plan Sheet
+            sub_data = subscription_resp.get("data", [])
+            if sub_data:
+                df_sub = pd.DataFrame(sub_data)
+                cols = ["captured_at", "amount"]
+                df_sub = df_sub[[c for c in cols if c in df_sub.columns]]
+                df_sub["amount"] = df_sub["amount"] / 100.0 if "amount" in df_sub.columns else 0
+                df_sub.to_excel(writer, sheet_name='Nutrition Plan', index=False)
+
+            # 4. Gym Membership Sheet
+            mem_data = membership_resp.get("data", [])
+            if mem_data:
+                df_mem = pd.DataFrame(mem_data)
+                cols = ["captured_at", "gym_name", "provider", "order_status", "amount"]
+                df_mem = df_mem[[c for c in cols if c in df_mem.columns]]
+                df_mem["amount"] = df_mem["amount"] / 100.0 if "amount" in df_mem.columns else 0
+                df_mem.to_excel(writer, sheet_name='Gym Membership', index=False)
+
+            # 5. AI Credits Sheet
+            ai_data = ai_credits_resp.get("data", [])
+            if ai_data:
+                df_ai = pd.DataFrame(ai_data)
+                cols = ["captured_at", "amount", "status"]
+                df_ai = df_ai[[c for c in cols if c in df_ai.columns]]
+                df_ai["amount"] = df_ai["amount"] / 100.0 if "amount" in df_ai.columns else 0
+                df_ai.to_excel(writer, sheet_name='AI Credits', index=False)
+
+        output.seek(0)
+        filename = f"purchase_history_user_{user_id}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{user_id}/ai-credits-purchases")
