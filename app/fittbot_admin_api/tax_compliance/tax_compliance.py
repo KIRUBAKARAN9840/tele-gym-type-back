@@ -178,18 +178,25 @@ async def get_monthly_tax_data(
             for record in all_paid_records
         }
 
-        # Generate ONLY the months needed for the current page
-        start_month_offset = offset
+        # Calculate the end of the current financial year (March of next calendar year if we are in April-Dec)
+        # Requirement: Show April 2026 to March 2027 when in April 2026.
+        if today.month >= 4:
+            fy_end_year = today.year + 1
+        else:
+            fy_end_year = today.year
+        
+        fy_end_month = 3 # March
 
         monthly_data = []
 
-        # Generate only the page_size months needed
+        # Generate months starting from the end of matching FY
         for i in range(page_size):
-            month_index = start_month_offset + i
+            month_index = offset + i
 
-            # Calculate month and year starting from previous month
-            month = today.month - 1 - month_index
-            year = today.year
+            # Calculate month and year starting from the END of the current FY (March)
+            month = fy_end_month - month_index
+            year = fy_end_year
+            
             while month <= 0:
                 month += 12
                 year -= 1
@@ -197,7 +204,8 @@ async def get_monthly_tax_data(
             # Format month string (YYYY-MM)
             month_str = f"{year}-{month:02d}"
 
-            # Get month start and end dates
+            # If the calculated month is in the future relative to today,
+            # we can still show it but it will have 0 revenue/taxes until they occur
             month_start = date(year, month, 1)
             last_day_of_month = calendar.monthrange(year, month)[1]
             month_end = date(year, month, last_day_of_month)
@@ -230,10 +238,9 @@ async def get_monthly_tax_data(
                 "tds_payable": tds_payable
             })
 
-        # Calculate total records
-        start_year = 2025
-        start_month = 1
-        total_months = (today.year - start_year) * 12 + today.month - start_month + 1
+        # Calculate total months from 2020 to end of current FY
+        total_months = (fy_end_year - 2020) * 12 + fy_end_month
+        total_pages = (total_months + page_size - 1) // page_size
 
         # Calculate total pages
         total_pages = (total_months + page_size - 1) // page_size

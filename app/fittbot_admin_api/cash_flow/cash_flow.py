@@ -454,20 +454,25 @@ async def get_monthly_cash_flow_data(
         # Get opening balance for current financial year
         current_fy_opening_balance = opening_balance_dict.get(current_fy, 0)
 
-        # Calculate cumulative cash flow from April 1 to current date
-        fy_start_month = 4  # April
-        fy_start_year = current_year if current_month >= 4 else current_year - 1
-
+        # Calculate the end of the current financial year (March of next calendar year if we are in April-Dec)
+        # Requirement: Show April 2026 to March 2027 when in April 2026.
+        if today.month >= 4:
+            fy_end_year = today.year + 1
+        else:
+            fy_end_year = today.year
+        
+        fy_end_month = 3 # March
+        
         monthly_data = []
 
-        # Generate only the months needed for the current page
-        # Start from previous month to show complete financial years
+        # Generate months starting from the end of matching FY
         for i in range(page_size):
             month_index = offset + i
 
-            # Calculate the month and year starting from previous month
-            month = today.month - 1 - month_index
-            year = today.year
+            # Calculate month and year starting from the END of the current FY (March)
+            month = fy_end_month - month_index
+            year = fy_end_year
+            
             while month <= 0:
                 month += 12
                 year -= 1
@@ -475,7 +480,8 @@ async def get_monthly_cash_flow_data(
             # Format month string (YYYY-MM)
             month_str = f"{year}-{month:02d}"
 
-            # Get month start and end dates
+            # If the calculated month is in the future relative to today,
+            # we can still show it but it will have 0 revenue/expenses until they occur
             month_start = date(year, month, 1)
             last_day_of_month = calendar.monthrange(year, month)[1]
             month_end = date(year, month, last_day_of_month)
@@ -593,10 +599,8 @@ async def get_monthly_cash_flow_data(
                 "runway": round(runway, 1)
             })
 
-        # Calculate total months
-        start_year = 2020
-        start_month = 1
-        total_months = (today.year - start_year) * 12 + today.month - start_month + 1
+        # Calculate total months from 2020 to the end of current FY
+        total_months = (fy_end_year - 2020) * 12 + fy_end_month
         total_pages = (total_months + page_size - 1) // page_size
 
         # Prepare opening balances data
