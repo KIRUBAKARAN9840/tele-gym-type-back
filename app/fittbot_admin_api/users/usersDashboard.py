@@ -2745,35 +2745,41 @@ async def get_user_last_purchases(
         except Exception as e:
             pass
 
-        # 4. Get latest Subscription (excluding 'free_trial' and 'internal_manual')
+        # 4. Get latest Nutrition Plan (Subscription)
         try:
-            sub_stmt = select(
-                Subscription
-            ).where(
-                and_(
-                    Subscription.customer_id == user_id_str,
-                    Subscription.provider.notin_(['free_trial', 'internal_manual'])
+            # Matching logic from get_user_fittbot_subscription
+            sub_stmt = (
+                select(Payment)
+                .where(
+                    and_(
+                        Payment.customer_id == user_id_str,
+                        Payment.status == "captured"
+                    )
                 )
-            ).order_by(Subscription.created_at.desc()).limit(1)
-
+                .order_by(Payment.captured_at.desc())
+            )
+            
             sub_result = await db.execute(sub_stmt)
-            sub = sub_result.scalar_one_or_none()
-
-            if sub:
-                # Get plan name from product_id
-                plan_name = get_plan_name_from_product_id(sub.product_id)
-
-                purchases["subscription"] = {
-                    "type": "Subscription",
-                    "purchase_date": sub.created_at.isoformat() if sub.created_at else None,
-                    "gym_name": None,  # Subscriptions don't have gym-specific purchases
-                    "product_id": sub.product_id,
-                    "plan_name": plan_name,
-                    "provider": sub.provider,
-                    "status": sub.status,
-                    "active_until": sub.active_until.isoformat() if sub.active_until else None,
-                    "is_active": is_subscription_active(sub.active_until, now)
-                }
+            # Find the FIRST one that matches nutrition_purchase_googleplay
+            for payment in sub_result.scalars():
+                metadata = payment.payment_metadata
+                if isinstance(metadata, str):
+                    try:
+                        metadata = json.loads(metadata)
+                    except json.JSONDecodeError:
+                        metadata = {}
+                elif not isinstance(metadata, dict):
+                    metadata = {}
+                
+                if metadata.get("flow") == "nutrition_purchase_googleplay":
+                    purchases["subscription"] = {
+                        "type": "Nutrition Plan",
+                        "purchase_date": payment.captured_at.isoformat() if payment.captured_at else (payment.created_at.isoformat() if payment.created_at else None),
+                        "gym_name": None,
+                        "amount_paid": float(payment.amount_minor) / 100.0, 
+                        "status": payment.status
+                    }
+                    break
         except Exception as e:
             pass
 
@@ -2809,7 +2815,7 @@ async def get_user_last_purchases(
                         "type": "AI Credits",
                         "purchase_date": payment.captured_at.isoformat() if payment.captured_at else (payment.created_at.isoformat() if payment.created_at else None),
                         "gym_name": None,
-                        "amount": float(payment.amount_minor),
+                        "amount": float(payment.amount_minor) / 100.0,
                         "status": payment.status
                     }
                     break  # Got the latest one, so stop looking

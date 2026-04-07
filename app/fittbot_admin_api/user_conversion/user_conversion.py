@@ -53,34 +53,80 @@ async def get_latest_purchase_type(user_id: str, db: AsyncSession) -> Optional[s
             )
         )
 
-        subscription_sub = select(
-            Subscription.created_at.label('purchase_date'),
-            literal('Fittbot Subscription').label('purchase_type')
+        nutrition_sub = select(
+            Payment.captured_at.label('purchase_date'),
+            literal('Nutrition Plan').label('purchase_type')
         ).where(
             and_(
-                Subscription.customer_id == user_id,
-                Subscription.provider.notin_(['free_trial', 'internal_manual'])
+                Payment.customer_id == user_id,
+                Payment.status == "captured"
+            )
+        )
+        
+        ai_credits_sub = select(
+            Payment.captured_at.label('purchase_date'),
+            literal('AI Credits').label('purchase_type')
+        ).where(
+            and_(
+                Payment.customer_id == user_id,
+                Payment.status == "captured"
             )
         )
 
         # Combine all and get the latest
+        # We will filter the results in python to handle JSON metadata correctly
         combined = union_all(
             daily_pass_sub,
             session_sub,
             membership_sub,
-            subscription_sub
+            nutrition_sub,
+            ai_credits_sub
         ).subquery()
 
-        latest_stmt = select(
-            combined.c.purchase_type
-        ).order_by(
-            desc(combined.c.purchase_date)
-        ).limit(1)
+        # Since we need to check metadata, we'll fetch them all and filter in Python
+        # for a reliable "Latest Purchased" column that includes the new types
+        all_stmt = select(
+            combined.c.purchase_type,
+            combined.c.purchase_date
+        ).order_by(desc(combined.c.purchase_date))
+        
+        import json
+        
+        all_result = await db.execute(all_stmt)
+        # However, to be 100% accurate with the JSON metadata, we should fetch 
+        # the payments separately if the union type is Nutrition or AI.
+        # For performance, we'll just return the first match from the ordered union
+        # but specifically check the payments table for those users.
+        
+        # Simplified: Check standard ones first, then check payments table for AI/Nutrition
+        for row in all_result.all():
+            if row.purchase_type in ["Daily Pass", "Session", "Gym Membership"]:
+                # Rename Session to Fitness class if needed, or keep internal naming
+                return "Fitness class" if row.purchase_type == "Session" else row.purchase_type
+            
+            # For Nutrition/AI, we need to verify the metadata flow
+            p_stmt = select(Payment).where(
+                Payment.customer_id == user_id,
+                Payment.status == "captured",
+                Payment.captured_at == row.purchase_date
+            )
+            p_res = await db.execute(p_stmt)
+            p = p_res.scalar_one_or_none()
+            if p:
+                meta = p.payment_metadata
+                if isinstance(meta, str):
+                    try: meta = json.loads(meta)
+                    except: meta = {}
+                elif not isinstance(meta, dict): meta = {}
+                
+                flow = meta.get("flow", "")
+                if flow == "nutrition_purchase_googleplay":
+                    return "Nutrition Plan"
+                if flow == "food_scanner_credits":
+                    return "AI Credits"
+        
+        return None
 
-        latest_result = await db.execute(latest_stmt)
-        latest = latest_result.scalar_one_or_none()
-
-        return latest
     except Exception as e:
         print(f"[LATEST_PURCHASE_TYPE] Error for user {user_id}: {e}")
         return None
@@ -165,7 +211,8 @@ async def get_user_last_purchases_async(user_id: str, db: AsyncSession):
         "daily_pass": None,
         "session": None,
         "membership": None,
-        "subscription": None
+        "subscription": None,
+        "ai_credits": None
     }
 
     # 1. Get latest Daily Pass
@@ -253,36 +300,73 @@ async def get_user_last_purchases_async(user_id: str, db: AsyncSession):
     except Exception as e:
         print(f"[LAST_PURCHASES] Error fetching Membership: {e}")
 
-    # 4. Get latest Subscription (excluding 'free_trial' and 'internal_manual')
+    # 4. Get latest Nutrition Plan (Subscription)
     try:
-        sub_stmt = select(
-            Subscription
-        ).where(
-            and_(
-                Subscription.customer_id == user_id,
-                Subscription.provider.notin_(['free_trial', 'internal_manual'])
+        import json
+        sub_stmt = (
+            select(Payment)
+            .where(
+                and_(
+                    Payment.customer_id == user_id,
+                    Payment.status == "captured"
+                )
             )
-        ).order_by(Subscription.created_at.desc()).limit(1)
-
+            .order_by(Payment.captured_at.desc())
+        )
+        
         sub_result = await db.execute(sub_stmt)
-        sub = sub_result.scalar_one_or_none()
-
-        if sub:
-            plan_name = get_plan_name_from_product_id(sub.product_id)
-
-            purchases["subscription"] = {
-                "type": "Subscription",
-                "purchase_date": sub.created_at.isoformat() if sub.created_at else None,
-                "gym_name": None,
-                "product_id": sub.product_id,
-                "plan_name": plan_name,
-                "provider": sub.provider,
-                "status": sub.status,
-                "active_until": sub.active_until.isoformat() if sub.active_until else None,
-                "is_active": is_subscription_active(sub.active_until, now)
-            }
+        for payment in sub_result.scalars():
+            metadata = payment.payment_metadata
+            if isinstance(metadata, str):
+                try: metadata = json.loads(metadata)
+                except: metadata = {}
+            elif not isinstance(metadata, dict): metadata = {}
+            
+            if metadata.get("flow") == "nutrition_purchase_googleplay":
+                purchases["subscription"] = {
+                    "type": "Nutrition Plan",
+                    "purchase_date": payment.captured_at.isoformat() if payment.captured_at else (payment.created_at.isoformat() if payment.created_at else None),
+                    "gym_name": None,
+                    "amount_paid": float(payment.amount_minor) / 100.0,
+                    "status": payment.status
+                }
+                break
     except Exception as e:
-        print(f"[LAST_PURCHASES] Error fetching Subscription: {e}")
+        print(f"[LAST_PURCHASES] Error fetching Nutrition Plan: {e}")
+
+    # 5. Get latest AI Credit purchase
+    try:
+        import json
+        ai_stmt = (
+            select(Payment)
+            .where(
+                and_(
+                    Payment.customer_id == user_id,
+                    Payment.status == "captured"
+                )
+            )
+            .order_by(Payment.captured_at.desc())
+        )
+        
+        ai_result = await db.execute(ai_stmt)
+        for payment in ai_result.scalars():
+            metadata = payment.payment_metadata
+            if isinstance(metadata, str):
+                try: metadata = json.loads(metadata)
+                except: metadata = {}
+            elif not isinstance(metadata, dict): metadata = {}
+            
+            if metadata.get("flow") == "food_scanner_credits":
+                purchases["ai_credits"] = {
+                    "type": "AI Credits",
+                    "purchase_date": payment.captured_at.isoformat() if payment.captured_at else (payment.created_at.isoformat() if payment.created_at else None),
+                    "gym_name": None,
+                    "amount": float(payment.amount_minor) / 100.0,
+                    "status": payment.status
+                }
+                break
+    except Exception as e:
+        print(f"[LAST_PURCHASES] Error fetching AI Credits: {e}")
 
     return purchases
 
