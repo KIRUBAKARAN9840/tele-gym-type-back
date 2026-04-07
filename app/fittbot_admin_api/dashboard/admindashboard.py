@@ -486,10 +486,20 @@ async def get_plans_metrics(db: AsyncSession):
     NEW LOGIC: Counts payments from payments.payments table
     where payment_metadata['flow'] = 'nutrition_purchase_googleplay'
     """
+    # EXCLUDED_CONTACTS for test/internal accounts
+    EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
+
     # Nutritionist Plans - count payments where flow = 'nutrition_purchase_googleplay'
-    stmt = select(func.count(distinct(Payment.customer_id))).where(
-        Payment.status == "captured",
-        func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay'
+    # Exclude internal/test contacts to match the inner page logic
+    stmt = (
+        select(func.count(distinct(Payment.customer_id)))
+        .select_from(Payment)
+        .outerjoin(Client, Payment.customer_id == Client.client_id)
+        .where(
+            Payment.status == "captured",
+            func.json_extract(Payment.payment_metadata, '$.flow') == 'nutrition_purchase_googleplay',
+            ~Client.contact.in_(EXCLUDED_CONTACTS)
+        )
     )
     result = await db.execute(stmt)
     nutritionist_total = result.scalar() or 0
