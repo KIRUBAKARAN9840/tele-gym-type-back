@@ -3032,6 +3032,4 @@ async def get_booking_averages(
         logging.error(f"Error in booking-averages: {str(e)}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
+        raise HTTPException(status_code=500, detail=str(e)) 

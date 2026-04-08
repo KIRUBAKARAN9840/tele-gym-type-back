@@ -183,12 +183,18 @@ async def get_clients_summary(
             )
 
         total_count = await db.scalar(count_query) or 0
+        
+        # --- Fetch Telecallers for Filter ---
+        t_stmt = select(Telecaller.id, Telecaller.name).order_by(Telecaller.name)
+        t_res = await db.execute(t_stmt)
+        telecallers_list = [{"id": r.id, "name": r.name} for r in t_res.all()]
 
         if total_count == 0:
             return {
                 "status": 200,
                 "message": "No clients found",
                 "data": [],
+                "telecallers": telecallers_list,
                 "pagination": {
                     "total": 0,
                     "limit": limit,
@@ -588,6 +594,7 @@ async def get_clients_summary(
             "status": 200,
             "message": f"Successfully retrieved {len(clients_data)} clients",
             "data": clients_data,
+            "telecallers": telecallers_list,
             "pagination": {
                 "total": total_count,
                 "limit": limit,
