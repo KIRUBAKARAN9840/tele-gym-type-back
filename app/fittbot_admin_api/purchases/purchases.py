@@ -845,6 +845,168 @@ async def get_gmv_summary(
         raise HTTPException(status_code=500, detail="An error occurred while fetching GMV summary")
 
 
+@router.get("/purchase-count-summary")
+async def get_purchase_count_summary(
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=200),
+    search: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Get per-client purchase counts across all categories.
+    Follows logic from compute_gmv_totals regarding valid purchases.
+    """
+    try:
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
+
+        # 1. Individual Streams
+        # Daily Pass
+        dp_stream = (
+            select(
+                cast(DailyPass.client_id, Integer).label("client_id")
+            )
+            .where(DailyPass.gym_id != "1")
+        )
+
+        # Sessions
+        sess_stream = (
+            select(
+                SessionPurchase.client_id
+            )
+            .where(SessionPurchase.status == "paid", SessionPurchase.gym_id != 1)
+        )
+
+        # Nutrition (Payments)
+        nutri_stream = (
+            select(
+                Payment.customer_id.label("client_id")
+            )
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(
+                Payment.status == "captured",
+                func.json_extract(Payment.payment_metadata, "$.flow") == "nutrition_purchase_googleplay",
+                ~Client.contact.in_(EXCLUDED_CONTACTS)
+            )
+        )
+
+        # AI Credits
+        ai_stream = (
+            select(
+                Payment.customer_id.label("client_id")
+            )
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(
+                Payment.status == "captured",
+                func.json_extract(Payment.payment_metadata, "$.flow") == "food_scanner_credits",
+                ~Client.contact.in_(EXCLUDED_CONTACTS)
+            )
+        )
+
+        # Gym Membership (Orders)
+        gym_meta_cond = or_(
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.audit.source")) == "dailypass_checkout_api",
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_sub",
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_free_fittbot"
+        )
+        gym_exists = (
+            select(1)
+            .select_from(OrderItem)
+            .where(
+                OrderItem.order_id == Order.id,
+                OrderItem.gym_id.isnot(None),
+                OrderItem.gym_id != "",
+                OrderItem.gym_id != "1"
+            )
+            .exists()
+        )
+        gm_stream = (
+            select(
+                cast(Order.customer_id, Integer).label("client_id")
+            )
+            .select_from(Payment)
+            .join(Order, Order.id == Payment.order_id)
+            .join(Client, Client.client_id == cast(Order.customer_id, Integer))
+            .where(
+                Payment.status == "captured",
+                Order.status == "paid",
+                Order.customer_id.isnot(None),
+                gym_meta_cond,
+                gym_exists,
+                ~Client.contact.in_(EXCLUDED_CONTACTS)  # Aligning with search-level exclusions if needed
+            )
+        )
+
+        # 2. Unified Purchase Events
+        unified_purchases = union_all(
+            dp_stream,
+            sess_stream,
+            nutri_stream,
+            ai_stream,
+            gm_stream
+        ).alias("unified_purchases")
+
+        # 3. Aggregate per Client
+        agg_query = (
+            select(
+                unified_purchases.c.client_id,
+                func.count().label("total_purchases"),
+                Client.name.label("client_name"),
+                Client.contact.label("client_contact"),
+                Client.profile.label("dp")
+            )
+            .join(Client, Client.client_id == unified_purchases.c.client_id)
+            .where(~Client.contact.in_(EXCLUDED_CONTACTS)) # Global exclusion for the listing
+            .group_by(unified_purchases.c.client_id, Client.name, Client.contact, Client.profile)
+            .order_by(desc(func.count()))
+        )
+
+        if search:
+            agg_query = agg_query.where(
+                or_(
+                    Client.name.ilike(f"%{search}%"),
+                    Client.contact.ilike(f"%{search}%")
+                )
+            )
+
+        # 4. Count Total Unique Clients in purchases
+        total_stmt = select(func.count()).select_from(agg_query.subquery())
+        total_count = await db.scalar(total_stmt) or 0
+
+        # 5. Fetch Paginated
+        offset = (page - 1) * limit
+        agg_query = agg_query.offset(offset).limit(limit)
+        
+        result = await db.execute(agg_query)
+        rows = result.all()
+
+        data = [
+            {
+                "client_id": r.client_id,
+                "client_name": r.client_name or "Unknown",
+                "client_contact": r.client_contact or "N/A",
+                "dp": r.dp,
+                "total_purchases": r.total_purchases
+            }
+            for r in rows
+        ]
+
+        return {
+            "success": True,
+            "data": data,
+            "pagination": {
+                "total": total_count,
+                "page": page,
+                "limit": limit,
+                "totalPages": (total_count + limit - 1) // limit if total_count > 0 else 0
+            }
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @router.get("/ai-credits")
 async def get_ai_credits(
