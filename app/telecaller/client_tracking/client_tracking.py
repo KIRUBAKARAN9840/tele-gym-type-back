@@ -1131,5 +1131,41 @@ async def add_purchase(
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/get-purchases/{client_id}")
+async def get_purchases(
+    client_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    try:
+        query = (
+            select(
+                PurchasesByTelecaller.purchased_plan,
+                PurchasesByTelecaller.purchased_date,
+                PurchasesByTelecaller.created_at,
+                Telecaller.name.label("telecaller_name")
+            )
+            .join(Telecaller, Telecaller.id == PurchasesByTelecaller.telecaller_id, isouter=True)
+            .where(PurchasesByTelecaller.client_id == client_id)
+            .order_by(desc(PurchasesByTelecaller.created_at))
+        )
+        
+        result = await db.execute(query)
+        purchases = []
+        for row in result:
+            purchases.append({
+                "purchased_plan": row.purchased_plan,
+                "purchased_date": row.purchased_date.isoformat() if row.purchased_date else None,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "telecaller_name": row.telecaller_name or "Unknown"
+            })
+            
+        return {
+            "status": 200,
+            "data": purchases
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 
