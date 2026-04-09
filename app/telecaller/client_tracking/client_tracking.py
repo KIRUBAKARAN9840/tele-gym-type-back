@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, desc, func, or_, exists, cast, String, and_, Date, Integer, union_all
+from sqlalchemy import select, desc, func, or_, exists, cast, String, and_, Date, Integer, union_all, literal_column
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from datetime import datetime, date
@@ -27,36 +27,29 @@ async def get_clients_summary(
     db: AsyncSession = Depends(get_async_db),
 ):
     try:
-
         offset = (page - 1) * limit
 
-        # Parse last_activity_date if provided
+        # Parse filters
         parsed_activity_date = None
         if last_activity_date:
             try:
                 parsed_activity_date = datetime.strptime(last_activity_date, "%Y-%m-%d").date()
             except ValueError:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid date format for last_activity_date. Expected YYYY-MM-DD, got: {last_activity_date}"
-                )
+                raise HTTPException(status_code=400, detail="Invalid last_activity_date format")
 
-        # Parse last_purchase_date if provided
         parsed_purchase_date = None
         if last_purchase_date:
             try:
                 parsed_purchase_date = datetime.strptime(last_purchase_date, "%Y-%m-%d").date()
             except ValueError:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid date format for last_purchase_date. Expected YYYY-MM-DD, got: {last_purchase_date}"
-                )
+                raise HTTPException(status_code=400, detail="Invalid last_purchase_date format")
 
-        # Build feedback subquery when call_status OR last_called_by filter is used
         is_checkout = call_status == "checkout"
         is_purchased = call_status == "purchased"
+
+        # 1. Build Feedback Subquery (Decoupled from tabs)
         latest_fb_detail = None
-        if (call_status or last_called_by) and not is_checkout and not is_purchased:
+        if (call_status and not is_checkout and not is_purchased) or last_called_by:
             latest_fb_id_subq = (
                 select(
                     ClientCallFeedback.client_id,
@@ -75,353 +68,114 @@ async def get_clients_summary(
                 .join(latest_fb_id_subq, ClientCallFeedback.id == latest_fb_id_subq.c.max_id)
                 .join(Telecaller, Telecaller.id == ClientCallFeedback.executive_id)
             )
-
-            # Apply executive filter if last_called_by is specified
             if last_called_by:
                 latest_fb_detail_query = latest_fb_detail_query.where(ClientCallFeedback.executive_id == last_called_by)
-
+            
             latest_fb_detail = latest_fb_detail_query.subquery()
 
-        # --- Count query ---
-        count_query = (
-            select(func.count(func.distinct(ClientActivitySummary.client_id)))
-            .join(Client, Client.client_id == ClientActivitySummary.client_id)
-        )
+        # 2. Setup Count Query
+        count_query = select(func.count(func.distinct(ClientActivitySummary.client_id))).join(Client, Client.client_id == ClientActivitySummary.client_id)
 
+        # Apply specific tab logic to Count
+        checkout_subq = None
         if is_checkout:
-            # Checkout filter: clients with checkout_attempts > 0
-            checkout_subq = (
-                select(ClientActivitySummary.client_id)
-                .group_by(ClientActivitySummary.client_id)
-                .having(func.sum(ClientActivitySummary.checkout_attempts) > 0)
-                .subquery()
-            )
-            count_query = count_query.join(
-                checkout_subq,
-                checkout_subq.c.client_id == ClientActivitySummary.client_id,
-            )
+            checkout_subq = select(ClientActivitySummary.client_id).group_by(ClientActivitySummary.client_id).having(func.sum(ClientActivitySummary.checkout_attempts) > 0).subquery()
+            count_query = count_query.join(checkout_subq, checkout_subq.c.client_id == ClientActivitySummary.client_id)
         elif is_purchased:
-            # Purchased filter: clients with at least one purchase in any of 3 tables
             dp_exists = exists().where(DailyPass.client_id == cast(ClientActivitySummary.client_id, String))
             sp_exists = exists().where((SessionPurchase.client_id == ClientActivitySummary.client_id) & (SessionPurchase.status == "paid"))
-            gm_exists = exists().where(
-                (FittbotGymMembership.client_id == cast(ClientActivitySummary.client_id, String))
-                & (FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
-            )
+            gm_exists = exists().where((FittbotGymMembership.client_id == cast(ClientActivitySummary.client_id, String)) & (FittbotGymMembership.type.in_(["gym_membership", "personal_training"])))
             count_query = count_query.where(or_(dp_exists, sp_exists, gm_exists))
         elif call_status:
-            count_query = count_query.join(
-                latest_fb_detail,
-                latest_fb_detail.c.client_id == ClientActivitySummary.client_id,
-            ).where(latest_fb_detail.c.call_status == call_status)
-            # Also filter by last_called_by if specified
-            if last_called_by:
-                count_query = count_query.where(latest_fb_detail.c.executive_id == last_called_by)
-        elif last_called_by:
-            # Apply last_called_by filter to count query
-            count_query = count_query.join(
-                latest_fb_detail,
-                latest_fb_detail.c.client_id == ClientActivitySummary.client_id,
-            )
+            count_query = count_query.join(latest_fb_detail, latest_fb_detail.c.client_id == ClientActivitySummary.client_id).where(latest_fb_detail.c.call_status == call_status)
 
+        # Apply Executive filter to Count (if not already handled in call_status branch)
+        if last_called_by and (not call_status or is_checkout or is_purchased):
+            count_query = count_query.join(latest_fb_detail, latest_fb_detail.c.client_id == ClientActivitySummary.client_id)
+
+        # Apply shared filters to Count
         if search:
-            search_term = f"%{search.lower()}%"
-            count_query = count_query.where(
-                or_(
-                    func.lower(Client.name).like(search_term),
-                    Client.contact.like(search_term),
-                )
-            )
-
-        # Apply last_activity_date filter to count query
+            count_query = count_query.where(or_(func.lower(Client.name).like(f"%{search.lower()}%"), Client.contact.like(f"%{search}%")))
         if parsed_activity_date:
-            activity_date_subq = (
-                select(ClientActivitySummary.client_id)
-                .group_by(ClientActivitySummary.client_id)
-                .having(cast(func.max(ClientActivitySummary.last_viewed_at), Date) == parsed_activity_date)
-                .subquery()
-            )
-            count_query = count_query.join(
-                activity_date_subq,
-                activity_date_subq.c.client_id == ClientActivitySummary.client_id,
-            )
+            activity_date_subq = select(ClientActivitySummary.client_id).group_by(ClientActivitySummary.client_id).having(cast(func.max(ClientActivitySummary.last_viewed_at), Date) == parsed_activity_date).subquery()
+            count_query = count_query.join(activity_date_subq, activity_date_subq.c.client_id == ClientActivitySummary.client_id)
 
-        # Apply last_purchase_date filter to count query
         if parsed_purchase_date:
-            # Create a union subquery to get max purchase date from all 3 tables
-            dp_purchases = (
-                select(cast(DailyPass.client_id, Integer).label("cid"), func.max(DailyPass.created_at).label("pmax_date"))
-                .group_by(DailyPass.client_id)
-            )
-            sp_purchases = (
-                select(SessionPurchase.client_id.label("cid"), func.max(SessionPurchase.created_at).label("pmax_date"))
-                .where(SessionPurchase.status == "paid")
-                .group_by(SessionPurchase.client_id)
-            )
-            gm_purchases = (
-                select(cast(FittbotGymMembership.client_id, Integer).label("cid"), func.max(FittbotGymMembership.purchased_at).label("pmax_date"))
-                .where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
-                .group_by(FittbotGymMembership.client_id)
-            )
-
-            # Combine all purchases using union_all function
-            combined = union_all(dp_purchases, sp_purchases, gm_purchases)
-            combined_alias = combined.alias("combined_purchases")
-            max_per_client = (
-                select(combined_alias.c.cid, func.max(combined_alias.c.pmax_date).label("final_max_date"))
-                .group_by(combined_alias.c.cid)
-                .alias("max_per_client")
-            )
-            purchase_date_subq = (
-                select(max_per_client.c.cid)
-                .where(cast(max_per_client.c.final_max_date, Date) == parsed_purchase_date)
-                .alias("purchase_date_filter")
-            )
-            count_query = count_query.join(
-                purchase_date_subq,
-                purchase_date_subq.c.cid == ClientActivitySummary.client_id,
-            )
+            # Union search for purchase date
+            dp_purchases = select(cast(DailyPass.client_id, Integer).label("cid"), func.max(DailyPass.created_at).label("dt")).group_by(DailyPass.client_id)
+            sp_purchases = select(SessionPurchase.client_id.label("cid"), func.max(SessionPurchase.created_at).label("dt")).where(SessionPurchase.status == "paid").group_by(SessionPurchase.client_id)
+            gm_purchases = select(cast(FittbotGymMembership.client_id, Integer).label("cid"), func.max(FittbotGymMembership.purchased_at).label("dt")).where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"])).group_by(FittbotGymMembership.client_id)
+            combined = union_all(dp_purchases, sp_purchases, gm_purchases).alias("combined")
+            max_p = select(combined.c.cid, func.max(combined.c.dt).label("max_dt")).group_by(combined.c.cid).alias("max_p")
+            p_filter = select(max_p.c.cid).where(cast(max_p.c.max_dt, Date) == parsed_purchase_date).alias("p_filter")
+            count_query = count_query.join(p_filter, p_filter.c.cid == ClientActivitySummary.client_id)
 
         total_count = await db.scalar(count_query) or 0
-        
-        # --- Fetch Telecallers for Filter ---
+
+        # Fetch Telecallers
         t_stmt = select(Telecaller.id, Telecaller.name).order_by(Telecaller.name)
         t_res = await db.execute(t_stmt)
         telecallers_list = [{"id": r.id, "name": r.name} for r in t_res.all()]
 
         if total_count == 0:
-            return {
-                "status": 200,
-                "message": "No clients found",
-                "data": [],
-                "telecallers": telecallers_list,
-                "pagination": {
-                    "total": 0,
-                    "limit": limit,
-                    "page": page,
-                    "totalPages": 0,
-                    "hasNext": False,
-                    "hasPrev": False,
-                },
-            }
+            return {"status": 200, "data": [], "telecallers": telecallers_list, "pagination": {"total": 0, "limit": limit, "page": page, "totalPages": 0}}
 
-        # --- Main query ---
-        if is_purchased:
-            # Purchased filter: same exists logic
+        # 3. Build Main Query
+        base_cols = [
+            ClientActivitySummary.client_id,
+            Client.name.label("client_name"),
+            Client.profile.label("dp"),
+            Client.contact.label("phone"),
+            func.count(func.distinct(ClientActivitySummary.gym_id)).label("total_gyms_viewed"),
+            func.max(ClientActivitySummary.last_viewed_at).label("last_viewed_at"),
+        ]
+        group_by = [ClientActivitySummary.client_id, Client.name, Client.profile, Client.contact]
+        
+        main_query = select(*base_cols).join(Client, Client.client_id == ClientActivitySummary.client_id)
+
+        # Apply Tab + Join
+        if is_checkout:
+            main_query = main_query.join(checkout_subq, checkout_subq.c.client_id == ClientActivitySummary.client_id)
+        elif is_purchased:
+            # Reuse exists logic
             dp_exists = exists().where(DailyPass.client_id == cast(ClientActivitySummary.client_id, String))
             sp_exists = exists().where((SessionPurchase.client_id == ClientActivitySummary.client_id) & (SessionPurchase.status == "paid"))
-            gm_exists = exists().where(
-                (FittbotGymMembership.client_id == cast(ClientActivitySummary.client_id, String))
-                & (FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
-            )
-
-            main_query = (
-                select(
-                    ClientActivitySummary.client_id,
-                    Client.name.label("client_name"),
-                    Client.profile.label("dp"),
-                    Client.contact.label("phone"),
-                    func.count(func.distinct(ClientActivitySummary.gym_id)).label("total_gyms_viewed"),
-                    func.max(ClientActivitySummary.last_viewed_at).label("last_viewed_at"),
-                )
-                .join(Client, Client.client_id == ClientActivitySummary.client_id)
-                .where(or_(dp_exists, sp_exists, gm_exists))
-            )
-
-            group_by_cols = [
-                ClientActivitySummary.client_id,
-                Client.name, Client.profile, Client.contact,
-            ]
-        elif is_checkout:
-            # Checkout filter: clients with checkout_attempts > 0
-            main_query = (
-                select(
-                    ClientActivitySummary.client_id,
-                    Client.name.label("client_name"),
-                    Client.profile.label("dp"),
-                    Client.contact.label("phone"),
-                    func.count(func.distinct(ClientActivitySummary.gym_id)).label("total_gyms_viewed"),
-                    func.max(ClientActivitySummary.last_viewed_at).label("last_viewed_at"),
-                )
-                .join(Client, Client.client_id == ClientActivitySummary.client_id)
-                .join(
-                    checkout_subq,
-                    checkout_subq.c.client_id == ClientActivitySummary.client_id,
-                )
-            )
-
-            group_by_cols = [
-                ClientActivitySummary.client_id,
-                Client.name, Client.profile, Client.contact,
-            ]
+            gm_exists = exists().where((FittbotGymMembership.client_id == cast(ClientActivitySummary.client_id, String)) & (FittbotGymMembership.type.in_(["gym_membership", "personal_training"])))
+            main_query = main_query.where(or_(dp_exists, sp_exists, gm_exists))
         elif call_status:
-            # With status filter: join feedback, select call_status + executive_name
-            main_query = (
-                select(
-                    ClientActivitySummary.client_id,
-                    Client.name.label("client_name"),
-                    Client.profile.label("dp"),
-                    Client.contact.label("phone"),
-                    func.count(func.distinct(ClientActivitySummary.gym_id)).label("total_gyms_viewed"),
-                    func.max(ClientActivitySummary.last_viewed_at).label("last_viewed_at"),
-                    latest_fb_detail.c.call_status,
-                    latest_fb_detail.c.executive_name,
-                )
-                .join(Client, Client.client_id == ClientActivitySummary.client_id)
-                .join(
-                    latest_fb_detail,
-                    latest_fb_detail.c.client_id == ClientActivitySummary.client_id,
-                )
-                .where(latest_fb_detail.c.call_status == call_status)
-            )
+            main_query = main_query.join(latest_fb_detail, latest_fb_detail.c.client_id == ClientActivitySummary.client_id).where(latest_fb_detail.c.call_status == call_status)
+            main_query = main_query.add_columns(latest_fb_detail.c.call_status, latest_fb_detail.c.executive_name)
+            group_by.extend([latest_fb_detail.c.call_status, latest_fb_detail.c.executive_name])
 
-            group_by_cols = [
-                ClientActivitySummary.client_id,
-                Client.name, Client.profile, Client.contact,
-                latest_fb_detail.c.call_status,
-                latest_fb_detail.c.executive_name,
-            ]
-        elif last_called_by:
-            # Apply last_called_by filter to main query
-            main_query = (
-                select(
-                    ClientActivitySummary.client_id,
-                    Client.name.label("client_name"),
-                    Client.profile.label("dp"),
-                    Client.contact.label("phone"),
-                    func.count(func.distinct(ClientActivitySummary.gym_id)).label("total_gyms_viewed"),
-                    func.max(ClientActivitySummary.last_viewed_at).label("last_viewed_at"),
-                    latest_fb_detail.c.call_status,
-                    latest_fb_detail.c.executive_name,
-                )
-                .join(Client, Client.client_id == ClientActivitySummary.client_id)
-                .join(
-                    latest_fb_detail,
-                    latest_fb_detail.c.client_id == ClientActivitySummary.client_id,
-                )
-            )
+        # Apply Executive Join if needed
+        if last_called_by and (not call_status or is_checkout or is_purchased):
+            main_query = main_query.join(latest_fb_detail, latest_fb_detail.c.client_id == ClientActivitySummary.client_id)
+            main_query = main_query.add_columns(latest_fb_detail.c.executive_name)
+            group_by.append(latest_fb_detail.c.executive_name)
 
-            group_by_cols = [
-                ClientActivitySummary.client_id,
-                Client.name, Client.profile, Client.contact,
-                latest_fb_detail.c.call_status,
-                latest_fb_detail.c.executive_name,
-            ]
-        else:
-            # Without status filter: simple query, no feedback join
-            if last_called_by and latest_fb_detail:
-                # Include executive information when last_called_by filter is applied
-                main_query = (
-                    select(
-                        ClientActivitySummary.client_id,
-                        Client.name.label("client_name"),
-                        Client.profile.label("dp"),
-                        Client.contact.label("phone"),
-                        func.count(func.distinct(ClientActivitySummary.gym_id)).label("total_gyms_viewed"),
-                        func.max(ClientActivitySummary.last_viewed_at).label("last_viewed_at"),
-                        latest_fb_detail.c.executive_name,
-                    )
-                    .join(Client, Client.client_id == ClientActivitySummary.client_id)
-                    .join(
-                        latest_fb_detail,
-                        latest_fb_detail.c.client_id == ClientActivitySummary.client_id,
-                    )
-                )
-
-                group_by_cols = [
-                    ClientActivitySummary.client_id,
-                    Client.name, Client.profile, Client.contact,
-                    latest_fb_detail.c.executive_name,
-                ]
-            else:
-                main_query = (
-                    select(
-                        ClientActivitySummary.client_id,
-                        Client.name.label("client_name"),
-                        Client.profile.label("dp"),
-                        Client.contact.label("phone"),
-                        func.count(func.distinct(ClientActivitySummary.gym_id)).label("total_gyms_viewed"),
-                        func.max(ClientActivitySummary.last_viewed_at).label("last_viewed_at"),
-                    )
-                    .join(Client, Client.client_id == ClientActivitySummary.client_id)
-                )
-
-                group_by_cols = [
-                    ClientActivitySummary.client_id,
-                    Client.name, Client.profile, Client.contact,
-                ]
-
+        # Apply Shared Filters to Main
         if search:
-            search_term = f"%{search.lower()}%"
-            main_query = main_query.where(
-                or_(
-                    func.lower(Client.name).like(search_term),
-                    Client.contact.like(search_term),
-                )
-            )
-
-        # Apply last_activity_date filter using HAVING clause
-        query_to_execute = main_query.group_by(*group_by_cols)
+            main_query = main_query.where(or_(func.lower(Client.name).like(f"%{search.lower()}%"), Client.contact.like(f"%{search}%")))
         if parsed_activity_date:
-            query_to_execute = query_to_execute.having(cast(func.max(ClientActivitySummary.last_viewed_at), Date) == parsed_activity_date)
-
-        # Apply last_purchase_date filter - need to join with purchase subquery
+            act_sub = select(ClientActivitySummary.client_id).group_by(ClientActivitySummary.client_id).having(cast(func.max(ClientActivitySummary.last_viewed_at), Date) == parsed_activity_date).subquery()
+            main_query = main_query.join(act_sub, act_sub.c.client_id == ClientActivitySummary.client_id)
         if parsed_purchase_date:
-            # Create same union subquery as count_query
-            dp_purchases = (
-                select(cast(DailyPass.client_id, Integer).label("cid"), func.max(DailyPass.created_at).label("pmax_date"))
-                .group_by(DailyPass.client_id)
-            )
-            sp_purchases = (
-                select(SessionPurchase.client_id.label("cid"), func.max(SessionPurchase.created_at).label("pmax_date"))
-                .where(SessionPurchase.status == "paid")
-                .group_by(SessionPurchase.client_id)
-            )
-            gm_purchases = (
-                select(cast(FittbotGymMembership.client_id, Integer).label("cid"), func.max(FittbotGymMembership.purchased_at).label("pmax_date"))
-                .where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
-                .group_by(FittbotGymMembership.client_id)
-            )
+            # Re-calculate purchase date subquery for main query
+            dp_purchases = select(cast(DailyPass.client_id, Integer).label("cid"), func.max(DailyPass.created_at).label("dt")).group_by(DailyPass.client_id)
+            sp_purchases = select(SessionPurchase.client_id.label("cid"), func.max(SessionPurchase.created_at).label("dt")).where(SessionPurchase.status == "paid").group_by(SessionPurchase.client_id)
+            gm_purchases = select(cast(FittbotGymMembership.client_id, Integer).label("cid"), func.max(FittbotGymMembership.purchased_at).label("dt")).where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"])).group_by(FittbotGymMembership.client_id)
+            combined = union_all(dp_purchases, sp_purchases, gm_purchases).alias("combined")
+            max_p = select(combined.c.cid, func.max(combined.c.dt).label("max_dt")).group_by(combined.c.cid).alias("max_p")
+            p_f = select(max_p.c.cid).where(cast(max_p.c.max_dt, Date) == parsed_purchase_date).alias("p_f")
+            main_query = main_query.join(p_f, p_f.c.cid == ClientActivitySummary.client_id)
 
-            combined = union_all(dp_purchases, sp_purchases, gm_purchases)
-            combined_alias = combined.alias("combined_purchases")
-            max_per_client = (
-                select(combined_alias.c.cid, func.max(combined_alias.c.pmax_date).label("final_max_date"))
-                .group_by(combined_alias.c.cid)
-                .alias("max_per_client")
-            )
-            purchase_date_subq = (
-                select(max_per_client.c.cid)
-                .where(cast(max_per_client.c.final_max_date, Date) == parsed_purchase_date)
-                .alias("purchase_date_filter")
-            )
-            query_to_execute = query_to_execute.join(
-                purchase_date_subq,
-                purchase_date_subq.c.cid == ClientActivitySummary.client_id,
-            )
+        main_query = main_query.group_by(*group_by).order_by(desc(func.max(ClientActivitySummary.last_viewed_at))).offset(offset).limit(limit)
 
-        result = await db.execute(
-            query_to_execute
-            .order_by(desc("last_viewed_at"))
-            .offset(offset)
-            .limit(limit)
-        )
+        result = await db.execute(main_query)
         rows = result.all()
 
         if not rows:
-            return {
-                "status": 200,
-                "message": "No clients found",
-                "data": [],
-                "pagination": {
-                    "total": total_count,
-                    "limit": limit,
-                    "page": page,
-                    "totalPages": (total_count + limit - 1) // limit,
-                    "hasNext": False,
-                    "hasPrev": page > 1,
-                },
-            }
+             return {"status": 200, "data": [], "telecallers": telecallers_list, "pagination": {"total": total_count, "limit": limit, "page": page}}
 
         # batch-fetch interested_products for these clients
         client_ids = [row.client_id for row in rows]
@@ -588,28 +342,187 @@ async def get_clients_summary(
                 "last_purchased_date": last_purchased_date.isoformat() if last_purchased_date else None,
             })
 
-        total_pages = (total_count + limit - 1) // limit
-
         return {
             "status": 200,
-            "message": f"Successfully retrieved {len(clients_data)} clients",
             "data": clients_data,
             "telecallers": telecallers_list,
             "pagination": {
                 "total": total_count,
                 "limit": limit,
                 "page": page,
-                "totalPages": total_pages,
-                "hasNext": page < total_pages,
-                "hasPrev": page > 1,
-            },
+                "totalPages": (total_count + limit - 1) // limit
+            }
         }
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch clients summary: {str(e)}",
+        raise HTTPException(status_code=500, detail=f"Failed to fetch clients summary: {str(e)}")
+
+
+# ──────────────────────────────────────────────────────────────────────
+# API 1.1 – Get Purchased Clients Summary (Per Payment)
+# ──────────────────────────────────────────────────────────────────────
+
+@router.get("/purchased-summary")
+async def get_purchased_summary(
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    search: Optional[str] = Query(None),
+    last_called_by: Optional[int] = Query(None),
+    last_activity_date: Optional[str] = Query(None),
+    last_purchase_date: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_async_db),
+):
+    try:
+        offset = (page - 1) * limit
+
+        # 1. Feedback Attribution Subquery (Latest call per client)
+        latest_fb_id_subq = (
+            select(
+                ClientCallFeedback.client_id,
+                func.max(ClientCallFeedback.id).label("max_id"),
+            )
+            .group_by(ClientCallFeedback.client_id)
+            .subquery()
         )
+        latest_fb_detail = (
+            select(
+                ClientCallFeedback.client_id,
+                ClientCallFeedback.executive_id,
+                Telecaller.name.label("executive_name"),
+            )
+            .join(latest_fb_id_subq, ClientCallFeedback.id == latest_fb_id_subq.c.max_id)
+            .join(Telecaller, Telecaller.id == ClientCallFeedback.executive_id)
+            .subquery()
+        )
+
+        # 2. Build Unified Purchase Stream
+        # Daily Pass
+        dp_stream = (
+            select(
+                cast(DailyPass.client_id, Integer).label("client_id"),
+                DailyPass.id.label("payment_id"),
+                func.concat("Daily Pass (", DailyPass.days_total, " Days)").label("plan_name"),
+                (DailyPass.amount_paid * 0.01).label("amount"),
+                DailyPass.created_at.label("purchased_at"),
+                literal_column("'dailypass'").label("source")
+            )
+        )
+        # Session
+        sp_stream = (
+            select(
+                SessionPurchase.client_id,
+                SessionPurchase.id.label("payment_id"),
+                func.concat("Sessions (", SessionPurchase.sessions_count, ")").label("plan_name"),
+                cast(SessionPurchase.payable_rupees, func.numeric()).label("amount"),
+                SessionPurchase.created_at.label("purchased_at"),
+                literal_column("'session'").label("source")
+            ).where(SessionPurchase.status == "paid")
+        )
+        # Membership
+        gm_stream = (
+            select(
+                cast(FittbotGymMembership.client_id, Integer).label("client_id"),
+                FittbotGymMembership.id.label("payment_id"),
+                func.concat(FittbotGymMembership.type, " (", FittbotGymMembership.duration_month, " Months)").label("plan_name"),
+                cast(FittbotGymMembership.amount, func.numeric()).label("amount"),
+                FittbotGymMembership.purchased_at.label("purchased_at"),
+                literal_column("'membership'").label("source")
+            ).where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"]))
+        )
+
+        unified_purchases = union_all(dp_stream, sp_stream, gm_stream).subquery()
+
+        # 3. Main Query: Join with Client and Attribution
+        main_query = (
+            select(
+                unified_purchases.c.client_id,
+                unified_purchases.c.payment_id,
+                unified_purchases.c.plan_name,
+                unified_purchases.c.amount,
+                unified_purchases.c.purchased_at,
+                unified_purchases.c.source,
+                Client.name.label("client_name"),
+                Client.contact.label("phone"),
+                Client.profile.label("dp"),
+                latest_fb_detail.c.executive_name,
+                func.max(ClientActivitySummary.last_viewed_at).label("last_activity")
+            )
+            .join(Client, Client.client_id == unified_purchases.c.client_id)
+            .outerjoin(latest_fb_detail, latest_fb_detail.c.client_id == unified_purchases.c.client_id)
+            .outerjoin(ClientActivitySummary, ClientActivitySummary.client_id == unified_purchases.c.client_id)
+        )
+
+        # Filters
+        if search:
+            main_query = main_query.where(or_(func.lower(Client.name).like(f"%{search.lower()}%"), Client.contact.like(f"%{search}%")))
+            
+        if last_called_by:
+            main_query = main_query.where(latest_fb_detail.c.executive_id == last_called_by)
+
+        if last_activity_date:
+            try:
+                p_date = datetime.strptime(last_activity_date, "%Y-%m-%d").date()
+                main_query = main_query.where(cast(ClientActivitySummary.last_viewed_at, Date) == p_date)
+            except: pass
+
+        if last_purchase_date:
+            try:
+                p_date = datetime.strptime(last_purchase_date, "%Y-%m-%d").date()
+                main_query = main_query.where(cast(unified_purchases.c.purchased_at, Date) == p_date)
+            except: pass
+
+        # Finalize
+        main_query = main_query.group_by(
+            unified_purchases.c.client_id,
+            unified_purchases.c.payment_id,
+            unified_purchases.c.plan_name,
+            unified_purchases.c.amount,
+            unified_purchases.c.purchased_at,
+            unified_purchases.c.source,
+            Client.name, Client.contact, Client.profile,
+            latest_fb_detail.c.executive_name
+        ).order_by(desc(unified_purchases.c.purchased_at))
+
+        # Count total
+        count_stmt = select(func.count()).select_from(main_query.subquery())
+        total_count = await db.scalar(count_stmt) or 0
+
+        # Execute with pagination
+        rows = (await db.execute(main_query.offset(offset).limit(limit))).all()
+
+        data = []
+        for r in rows:
+            data.append({
+                "client_id": r.client_id,
+                "payment_id": r.payment_id,
+                "client_name": r.client_name,
+                "phone": r.phone,
+                "dp": r.dp,
+                "plan_name": r.plan_name,
+                "amount": float(r.amount) if r.amount else 0,
+                "purchased_at": r.purchased_at.isoformat() if r.purchased_at else None,
+                "source": r.source,
+                "executive_name": r.executive_name or "Unknown",
+                "last_activity": r.last_activity.isoformat() if r.last_activity else None
+            })
+
+        # Fetch Telecallers for Filter
+        t_res = await db.execute(select(Telecaller.id, Telecaller.name).order_by(Telecaller.name))
+        telecallers_list = [{"id": r.id, "name": r.name} for r in t_res.all()]
+
+        return {
+            "status": 200,
+            "data": data,
+            "telecallers": telecallers_list,
+            "pagination": {
+                "total": total_count,
+                "limit": limit,
+                "page": page,
+                "totalPages": (total_count + limit - 1) // limit
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/client-detail/{client_id}")
 async def get_client_detail(
@@ -708,7 +621,7 @@ async def get_client_detail(
         all_purchases = []
 
         # daily passes - get day status from daily_pass_days table with aggregated info
-        from sqlalchemy import case, literal_column, over
+        from sqlalchemy import case, literal_column
 
         # Query to get attendance stats for each pass
         day_stats_subq = select(
@@ -800,11 +713,7 @@ async def get_client_detail(
                 missed = dp.missed_days or 0
                 scheduled = dp.scheduled_days or 0
 
-                # Calculate attendance percentage
-                attendance_percent = round((attended / total_days * 100)) if total_days > 0 else 0
-
                 # Determine display status
-                # If all days are completed (no scheduled days remaining)
                 if scheduled == 0:
                     if attended == total_days:
                         status_display = f"Completed ({attended}/{total_days} attended)"
@@ -813,7 +722,6 @@ async def get_client_detail(
                     else:
                         status_display = f"{missed}/{total_days} missed"
                 else:
-                    # Some days still remaining
                     status_display = f"In progress ({attended}/{total_days} attended)"
 
                 all_purchases.append({
@@ -977,8 +885,6 @@ async def create_call_feedback(
     db: AsyncSession = Depends(get_async_db),
 ):
     try:
-        #print(f"Creating call feedback for client_id={body.client_id}, executive_id={body.executive_id}")
-
         new_feedback = ClientCallFeedback(
             client_id=body.client_id,
             executive_id=body.executive_id,
@@ -1030,7 +936,6 @@ async def get_call_feedback(
     db: AsyncSession = Depends(get_async_db),
 ):
     try:
-        #print(f"Fetching call feedback for client_id={client_id}, page={page}, limit={limit}")
         offset = (page - 1) * limit
 
         total_count = await db.scalar(
@@ -1104,6 +1009,67 @@ async def get_call_feedback(
             status_code=500,
             detail=f"Failed to fetch call feedback: {str(e)}",
         )
+
+
+class PurchaseCreate(BaseModel):
+    client_id: int
+    telecaller_id: int
+    purchased_plan: str
+    purchased_date: date
+
+@router.post("/add-purchase")
+async def add_purchase(
+    purchase: PurchaseCreate,
+    db: AsyncSession = Depends(get_async_db)
+):
+    try:
+        new_purchase = PurchasesByTelecaller(
+            client_id=purchase.client_id,
+            telecaller_id=purchase.telecaller_id,
+            purchased_plan=purchase.purchased_plan,
+            purchased_date=purchase.purchased_date
+        )
+        db.add(new_purchase)
+        await db.commit()
+        return {"status": 200, "message": "Purchase added successfully"}
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/get-purchases/{client_id}")
+async def get_purchases(
+    client_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    try:
+        query = (
+            select(
+                PurchasesByTelecaller.purchased_plan,
+                PurchasesByTelecaller.purchased_date,
+                PurchasesByTelecaller.created_at,
+                Telecaller.name.label("telecaller_name")
+            )
+            .join(Telecaller, Telecaller.id == PurchasesByTelecaller.telecaller_id, isouter=True)
+            .where(PurchasesByTelecaller.client_id == client_id)
+            .order_by(desc(PurchasesByTelecaller.created_at))
+        )
+        
+        result = await db.execute(query)
+        purchases = []
+        for row in result:
+            purchases.append({
+                "purchased_plan": row.purchased_plan,
+                "purchased_date": row.purchased_date.isoformat() if row.purchased_date else None,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "telecaller_name": row.telecaller_name or "Unknown"
+            })
+            
+        return {
+            "status": 200,
+            "data": purchases
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class PurchaseCreate(BaseModel):
