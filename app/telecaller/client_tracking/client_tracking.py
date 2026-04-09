@@ -9,7 +9,7 @@ from app.models.async_database import get_async_db
 from app.models.client_activity_models import ClientActivitySummary, ClientActivityEvent
 from app.models.fittbot_models import Client, Gym, SessionPurchase, FittbotGymMembership, SessionBookingDay
 from app.models.dailypass_models import DailyPass, DailyPassDay
-from app.models.telecaller_models import ClientCallFeedback, Telecaller
+from app.models.telecaller_models import ClientCallFeedback, Telecaller, PurchasesByTelecaller
 
 router = APIRouter(prefix="/client-tracking", tags=["Client Tracking"])
 
@@ -1104,5 +1104,32 @@ async def get_call_feedback(
             status_code=500,
             detail=f"Failed to fetch call feedback: {str(e)}",
         )
+
+
+class PurchaseCreate(BaseModel):
+    client_id: int
+    telecaller_id: int
+    purchased_plan: str
+    purchased_date: date
+
+@router.post("/add-purchase")
+async def add_purchase(
+    purchase: PurchaseCreate,
+    db: AsyncSession = Depends(get_async_db)
+):
+    try:
+        new_purchase = PurchasesByTelecaller(
+            client_id=purchase.client_id,
+            telecaller_id=purchase.telecaller_id,
+            purchased_plan=purchase.purchased_plan,
+            purchased_date=purchase.purchased_date
+        )
+        db.add(new_purchase)
+        await db.commit()
+        return {"status": 200, "message": "Purchase added successfully"}
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 

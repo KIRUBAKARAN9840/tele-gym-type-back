@@ -364,3 +364,24 @@ class ClientCallFeedback(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     telecaller = relationship("Telecaller", foreign_keys=[executive_id])
+
+
+class PurchasesByTelecaller(Base):
+    """Tracks purchases entered by telecallers for converted clients."""
+    __tablename__ = "purchases_by_telecaller"
+    __table_args__ = (
+        Index("idx_purchases_by_telecaller_client_id", "client_id"),
+        Index("idx_purchases_by_telecaller_telecaller_id", "telecaller_id"),
+        {"schema": "telecaller"}
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    client_id = Column(Integer, nullable=False)
+    telecaller_id = Column(Integer, ForeignKey("telecaller.telecallers.id", ondelete="SET NULL"), nullable=True)
+    purchased_plan = Column(String(255), nullable=False)
+    purchased_date = Column(Date, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    telecaller = relationship("Telecaller")
