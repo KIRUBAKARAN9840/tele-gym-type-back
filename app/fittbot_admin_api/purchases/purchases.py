@@ -1007,6 +1007,237 @@ async def get_purchase_count_summary(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/export-purchase-count-summary")
+async def export_purchase_count_summary(
+    search: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Export per-client purchase counts and details to Excel.
+    Columns: S.No, Client Name, Client Mobile, No. of Bookings, Gym name, Booking Dates, Total Amount.
+    """
+    try:
+        EXCLUDED_CONTACTS = ["7373675762", "9486987082", "8667458723", "9840633149"]
+
+        # 1. Individual detailed streams
+        # Daily Pass
+        dp_stream = (
+            select(
+                cast(DailyPass.client_id, Integer).label("client_id"),
+                (Payment.amount_minor / 100.0).label("amount"),
+                Gym.name.label("gym_name"),
+                func.date(DailyPass.created_at).label("booking_date"),
+                literal("Daily Pass").label("type")
+            )
+            .select_from(DailyPass)
+            .join(Gym, cast(DailyPass.gym_id, Integer) == Gym.gym_id)
+            .outerjoin(Payment, DailyPass.payment_id == Payment.provider_payment_id)
+            .where(DailyPass.gym_id != "1")
+        )
+
+        # Sessions
+        sess_stream = (
+            select(
+                SessionPurchase.client_id,
+                SessionPurchase.payable_rupees.label("amount"),
+                Gym.name.label("gym_name"),
+                func.date(SessionPurchase.created_at).label("booking_date"),
+                literal("Session").label("type")
+            )
+            .select_from(SessionPurchase)
+            .join(Gym, SessionPurchase.gym_id == Gym.gym_id)
+            .where(SessionPurchase.status == "paid", SessionPurchase.gym_id != 1)
+        )
+
+        # Nutrition
+        nutri_stream = (
+            select(
+                Payment.customer_id.label("client_id"),
+                (Payment.amount_minor / 100.0).label("amount"),
+                literal("Nutrition Service").label("gym_name"),
+                func.date(Payment.captured_at).label("booking_date"),
+                literal("Nutrition").label("type")
+            )
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(
+                Payment.status == "captured",
+                func.json_extract(Payment.payment_metadata, "$.flow") == "nutrition_purchase_googleplay",
+                ~Client.contact.in_(EXCLUDED_CONTACTS)
+            )
+        )
+
+        # AI Credits
+        ai_stream = (
+            select(
+                Payment.customer_id.label("client_id"),
+                (Payment.amount_minor / 100.0).label("amount"),
+                literal("AI Service").label("gym_name"),
+                func.date(Payment.captured_at).label("booking_date"),
+                literal("AI Credits").label("type")
+            )
+            .select_from(Payment)
+            .outerjoin(Client, Payment.customer_id == Client.client_id)
+            .where(
+                Payment.status == "captured",
+                func.json_extract(Payment.payment_metadata, "$.flow") == "food_scanner_credits",
+                ~Client.contact.in_(EXCLUDED_CONTACTS)
+            )
+        )
+
+        # Gym Membership
+        gym_meta_cond = or_(
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.audit.source")) == "dailypass_checkout_api",
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_sub",
+            func.json_unquote(func.json_extract(Order.order_metadata, "$.order_info.flow")) == "unified_gym_membership_with_free_fittbot"
+        )
+        gym_exists_join = (
+            select(OrderItem.order_id, Gym.name.label("gym_name"))
+            .join(Gym, Gym.gym_id == cast(OrderItem.gym_id, Integer))
+            .where(OrderItem.gym_id != "1")
+            .alias("gym_info")
+        )
+        
+        gm_stream = (
+            select(
+                cast(Order.customer_id, Integer).label("client_id"),
+                (Order.gross_amount_minor / 100.0).label("amount"),
+                gym_exists_join.c.gym_name,
+                func.date(Payment.captured_at).label("booking_date"),
+                literal("Membership").label("type")
+            )
+            .select_from(Payment)
+            .join(Order, Order.id == Payment.order_id)
+            .join(gym_exists_join, gym_exists_join.c.order_id == Order.id)
+            .join(Client, Client.client_id == cast(Order.customer_id, Integer))
+            .where(
+                Payment.status == "captured",
+                Order.status == "paid",
+                ~Client.contact.in_(EXCLUDED_CONTACTS),
+                gym_meta_cond
+            )
+        )
+
+        unified_detailed = union_all(
+            dp_stream,
+            sess_stream,
+            nutri_stream,
+            ai_stream,
+            gm_stream
+        ).alias("unified_detailed")
+
+        # Join with Client for name and contact
+        full_query = (
+            select(
+                unified_detailed.c.client_id,
+                unified_detailed.c.amount,
+                unified_detailed.c.gym_name,
+                unified_detailed.c.booking_date,
+                Client.name.label("client_name"),
+                Client.contact.label("client_contact")
+            )
+            .join(Client, Client.client_id == unified_detailed.c.client_id)
+            .where(~Client.contact.in_(EXCLUDED_CONTACTS))
+        )
+
+        if search:
+            full_query = full_query.where(
+                or_(
+                    Client.name.ilike(f"%{search}%"),
+                    Client.contact.ilike(f"%{search}%")
+                )
+            )
+
+        result = await db.execute(full_query)
+        rows = result.all()
+
+        # 2. Aggregate in Python for complex concatenation
+        aggregated_data = {}
+        for r in rows:
+            cid = r.client_id
+            if cid not in aggregated_data:
+                aggregated_data[cid] = {
+                    "client_name": r.client_name or "Unknown",
+                    "client_mobile": r.client_contact or "N/A",
+                    "num_bookings": 0,
+                    "gym_names": set(),
+                    "booking_dates": set(),
+                    "total_amount": 0.0
+                }
+            
+            agg = aggregated_data[cid]
+            agg["num_bookings"] += 1
+            if r.gym_name:
+                agg["gym_names"].add(r.gym_name)
+            if r.booking_date:
+                # Handle both datetime and string
+                if hasattr(r.booking_date, 'strftime'):
+                    agg["booking_dates"].add(r.booking_date.strftime("%Y-%m-%d"))
+                else:
+                    agg["booking_dates"].add(str(r.booking_date))
+            agg["total_amount"] += float(r.amount or 0)
+
+        # 3. Create Excel
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Purchase Summary"
+
+        headers = ["S.No", "Client Name", "Client Mobile", "No. of Bookings", "Gym Name", "Booking Dates", "Total Amount"]
+        ws.append(headers)
+
+        # Style header
+        header_fill = PatternFill(start_color="FF5757", end_color="FF5757", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+
+        # Sort aggregated data by number of bookings descending
+        sorted_clients = sorted(aggregated_data.values(), key=lambda x: x["num_bookings"], reverse=True)
+
+        for i, client in enumerate(sorted_clients, 1):
+            ws.append([
+                i,
+                client["client_name"],
+                client["client_mobile"],
+                client["num_bookings"],
+                ", ".join(sorted(list(client["gym_names"]))),
+                ", ".join(sorted(list(client["booking_dates"]))),
+                f"₹{client['total_amount']:.2f}"
+            ])
+
+        # Auto-adjust column widths
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except: pass
+            ws.column_dimensions[column_letter].width = min(max_length + 2, 60)
+
+        # Save to bytes
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"client_purchase_summary_{timestamp}.xlsx"
+
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Export error: {str(e)}")
+
+
 
 @router.get("/ai-credits")
 async def get_ai_credits(
