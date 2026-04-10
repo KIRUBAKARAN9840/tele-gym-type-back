@@ -73,45 +73,6 @@ async def get_clients_summary(
             
             latest_fb_detail = latest_fb_detail_query.subquery()
 
-        # 2. Setup Count Query
-        count_query = select(func.count(func.distinct(ClientActivitySummary.client_id))).join(Client, Client.client_id == ClientActivitySummary.client_id)
-
-        # Apply specific tab logic to Count
-        checkout_subq = None
-        if is_checkout:
-            checkout_subq = select(ClientActivitySummary.client_id).group_by(ClientActivitySummary.client_id).having(func.sum(ClientActivitySummary.checkout_attempts) > 0).subquery()
-            count_query = count_query.join(checkout_subq, checkout_subq.c.client_id == ClientActivitySummary.client_id)
-        elif is_purchased:
-            dp_exists = exists().where(DailyPass.client_id == cast(ClientActivitySummary.client_id, String))
-            sp_exists = exists().where((SessionPurchase.client_id == ClientActivitySummary.client_id) & (SessionPurchase.status == "paid"))
-            gm_exists = exists().where((FittbotGymMembership.client_id == cast(ClientActivitySummary.client_id, String)) & (FittbotGymMembership.type.in_(["gym_membership", "personal_training"])))
-            count_query = count_query.where(or_(dp_exists, sp_exists, gm_exists))
-        elif call_status:
-            count_query = count_query.join(latest_fb_detail, latest_fb_detail.c.client_id == ClientActivitySummary.client_id).where(latest_fb_detail.c.call_status == call_status)
-
-        # Apply Executive filter to Count (if not already handled in call_status branch)
-        if last_called_by and (not call_status or is_checkout or is_purchased):
-            count_query = count_query.join(latest_fb_detail, latest_fb_detail.c.client_id == ClientActivitySummary.client_id)
-
-        # Apply shared filters to Count
-        if search:
-            count_query = count_query.where(or_(func.lower(Client.name).like(f"%{search.lower()}%"), Client.contact.like(f"%{search}%")))
-        if parsed_activity_date:
-            activity_date_subq = select(ClientActivitySummary.client_id).group_by(ClientActivitySummary.client_id).having(cast(func.max(ClientActivitySummary.last_viewed_at), Date) == parsed_activity_date).subquery()
-            count_query = count_query.join(activity_date_subq, activity_date_subq.c.client_id == ClientActivitySummary.client_id)
-
-        if parsed_purchase_date:
-            # Union search for purchase date
-            dp_purchases = select(cast(DailyPass.client_id, Integer).label("cid"), func.max(DailyPass.created_at).label("dt")).group_by(DailyPass.client_id)
-            sp_purchases = select(SessionPurchase.client_id.label("cid"), func.max(SessionPurchase.created_at).label("dt")).where(SessionPurchase.status == "paid").group_by(SessionPurchase.client_id)
-            gm_purchases = select(cast(FittbotGymMembership.client_id, Integer).label("cid"), func.max(FittbotGymMembership.purchased_at).label("dt")).where(FittbotGymMembership.type.in_(["gym_membership", "personal_training"])).group_by(FittbotGymMembership.client_id)
-            combined = union_all(dp_purchases, sp_purchases, gm_purchases).alias("combined")
-            max_p = select(combined.c.cid, func.max(combined.c.dt).label("max_dt")).group_by(combined.c.cid).alias("max_p")
-            p_filter = select(max_p.c.cid).where(cast(max_p.c.max_dt, Date) == parsed_purchase_date).alias("p_filter")
-            count_query = count_query.join(p_filter, p_filter.c.cid == ClientActivitySummary.client_id)
-
-        total_count = await db.scalar(count_query) or 0
-
         # Fetch Telecallers
         t_stmt = select(Telecaller.id, Telecaller.name).order_by(Telecaller.name)
         t_res = await db.execute(t_stmt)
@@ -135,6 +96,7 @@ async def get_clients_summary(
 
         # Apply Tab + Join
         if is_checkout:
+            checkout_subq = select(ClientActivitySummary.client_id).group_by(ClientActivitySummary.client_id).having(func.sum(ClientActivitySummary.checkout_attempts) > 0).subquery()
             main_query = main_query.join(checkout_subq, checkout_subq.c.client_id == ClientActivitySummary.client_id)
         elif is_purchased:
             # Reuse exists logic
@@ -168,6 +130,13 @@ async def get_clients_summary(
             max_p = select(combined.c.cid, func.max(combined.c.dt).label("max_dt")).group_by(combined.c.cid).alias("max_p")
             p_f = select(max_p.c.cid).where(cast(max_p.c.max_dt, Date) == parsed_purchase_date).alias("p_f")
             main_query = main_query.join(p_f, p_f.c.cid == ClientActivitySummary.client_id)
+
+        # Count total from the filtered query (without pagination)
+        total_count_query = select(func.count()).select_from(main_query.group_by(*group_by).subquery())
+        total_count = await db.scalar(total_count_query) or 0
+
+        if total_count == 0:
+            return {"status": 200, "data": [], "telecallers": telecallers_list, "pagination": {"total": 0, "limit": limit, "page": page, "totalPages": 0, "hasNext": False, "hasPrev": False}}
 
         main_query = main_query.group_by(*group_by).order_by(desc(func.max(ClientActivitySummary.last_viewed_at))).offset(offset).limit(limit)
 
@@ -342,6 +311,7 @@ async def get_clients_summary(
                 "last_purchased_date": last_purchased_date.isoformat() if last_purchased_date else None,
             })
 
+        total_pages = (total_count + limit - 1) // limit
         return {
             "status": 200,
             "data": clients_data,
@@ -350,7 +320,9 @@ async def get_clients_summary(
                 "total": total_count,
                 "limit": limit,
                 "page": page,
-                "totalPages": (total_count + limit - 1) // limit
+                "totalPages": total_pages,
+                "hasNext": page < total_pages,
+                "hasPrev": page > 1
             }
         }
 
@@ -510,6 +482,7 @@ async def get_purchased_summary(
         t_res = await db.execute(select(Telecaller.id, Telecaller.name).order_by(Telecaller.name))
         telecallers_list = [{"id": r.id, "name": r.name} for r in t_res.all()]
 
+        total_pages = (total_count + limit - 1) // limit
         return {
             "status": 200,
             "data": data,
@@ -518,7 +491,9 @@ async def get_purchased_summary(
                 "total": total_count,
                 "limit": limit,
                 "page": page,
-                "totalPages": (total_count + limit - 1) // limit
+                "totalPages": total_pages,
+                "hasNext": page < total_pages,
+                "hasPrev": page > 1
             }
         }
     except Exception as e:
