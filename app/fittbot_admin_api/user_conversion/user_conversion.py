@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, cast, String, or_, and_, desc, union, union_all, literal, over
+from sqlalchemy import select, func, cast, String, or_, and_, desc, union, union_all, literal, over, distinct
 from app.models.async_database import get_async_db
 from app.models.telecaller_models import Telecaller, UserConversion, ClientCallFeedback, ConvertedBy
 from app.models.fittbot_models import Client, Gym, GymOwner, SessionPurchase, FittbotGymMembership
@@ -177,6 +177,7 @@ async def get_telecaller_total_revenue(telecaller_id: int, db: AsyncSession) -> 
         ).join(
             distinct_clients, distinct_clients.c.client_id == Payment.customer_id
         ).where(
+            Payment.status == "captured",
             or_(
                 OrderItem.gym_id != '1',
                 OrderItem.gym_id.is_(None)
@@ -396,6 +397,7 @@ async def get_telecallers_with_conversion_count(
             "name": t.name,
             "mobile_number": t.mobile_number,
             "total_converted": 0,
+            "bookings_count": 0,
             "total_revenue": 0.0
         } for t in telecallers}
 
@@ -472,7 +474,8 @@ async def get_telecallers_with_conversion_count(
         # Join: distinct_client_telecaller -> Payment -> Order -> OrderItem
         revenue_query = select(
             distinct_client_telecaller.c.telecaller_id,
-            func.coalesce(func.sum(Payment.amount_minor), 0).label('amount_minor')
+            func.coalesce(func.sum(Payment.amount_minor), 0).label('amount_minor'),
+            func.count(distinct(Payment.id)).label('bookings_count')
         ).join(
             Payment, Payment.customer_id == distinct_client_telecaller.c.client_id
         ).join(
@@ -480,6 +483,7 @@ async def get_telecallers_with_conversion_count(
         ).join(
             OrderItem, OrderItem.order_id == Order.id
         ).where(
+            Payment.status == "captured",
             or_(
                 OrderItem.gym_id != '1',
                 OrderItem.gym_id.is_(None)
@@ -490,6 +494,7 @@ async def get_telecallers_with_conversion_count(
         for row in revenue_result.all():
             if row.telecaller_id in telecaller_dict:
                 telecaller_dict[row.telecaller_id]["total_revenue"] = float(row.amount_minor) / 100
+                telecaller_dict[row.telecaller_id]["bookings_count"] = row.bookings_count
 
         # Convert dict back to list
         telecaller_list = list(telecaller_dict.values())
